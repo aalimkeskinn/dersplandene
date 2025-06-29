@@ -184,7 +184,7 @@ const SchedulePrintView: React.FC<SchedulePrintViewProps> = ({
             })}
           </tr>
 
-          {PERIODS.map((period, periodIndex) => {
+          {PERIODS.map((period, index) => {
             const timeInfo = getTimeInfo(period);
             const isLunchPeriod = (
               (teacher.level === 'İlkokul' || teacher.level === 'Anaokulu') && period === '5'
@@ -199,9 +199,7 @@ const SchedulePrintView: React.FC<SchedulePrintViewProps> = ({
             
             return (
               <React.Fragment key={period}>
-                <tr style={{ 
-                  backgroundColor: isLunchPeriod ? '#f0fff0' : (periodIndex % 2 === 0 ? '#ffffff' : '#f8f9fa')
-                }}>
+                <tr className={isLunchPeriod ? 'bg-green-50' : ''}>
                   <td style={{ 
                     border: '1px solid #000000',
                     padding: '8px 4px',
@@ -221,6 +219,8 @@ const SchedulePrintView: React.FC<SchedulePrintViewProps> = ({
                   </td>
                   {DAYS.map(day => {
                     if (isLunchPeriod) {
+                      const fixedInfo = getFixedPeriodInfo(day, period, teacher.level);
+                      
                       return (
                         <td key={`${day}-${period}`} style={{ 
                           border: '1px solid #000000',
@@ -228,7 +228,12 @@ const SchedulePrintView: React.FC<SchedulePrintViewProps> = ({
                           textAlign: 'center',
                           backgroundColor: '#f0fff0'
                         }}>
-                          Yemek
+                          <div style={{ 
+                            fontWeight: 'bold',
+                            fontSize: '10px'
+                          }}>
+                            Yemek
+                          </div>
                         </td>
                       );
                     }
@@ -240,7 +245,7 @@ const SchedulePrintView: React.FC<SchedulePrintViewProps> = ({
                         border: '1px solid #000000',
                         padding: '8px 4px',
                         textAlign: 'center',
-                        backgroundColor: periodIndex % 2 === 0 ? '#ffffff' : '#f8f9fa'
+                        backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa'
                       }}>
                         {slotInfo ? (
                           <div style={{ 

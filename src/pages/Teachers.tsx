@@ -162,6 +162,73 @@ const Teachers = () => {
   const levelFilterOptions = [{ value: '', label: 'Tüm Seviyeler' }, ...levelOptions];
   const branchFilterOptions = [{ value: '', label: 'Tüm Branşlar' }, ...getUniqueBranches().map(branch => ({ value: branch, label: branch }))];
 
+  // DÜZELTME: Kulüp öğretmenlerinin ders saatlerini doğru hesaplama
+  const getTeacherHoursInClass = (teacherId: string, classId: string): number => {
+    const teacherSchedule = schedules.find(s => s.teacherId === teacherId);
+    if (!teacherSchedule) return 0;
+    
+    let hours = 0;
+    Object.entries(teacherSchedule.schedule).forEach(([day, daySlots]) => {
+      Object.entries(daySlots).forEach(([period, slot]) => {
+        if (slot?.classId === classId && !slot.isFixed) {
+          hours++;
+        }
+      });
+    });
+    return hours;
+  };
+  
+  // DÜZELTME: Kulüp derslerini özel olarak kontrol et
+  const getTeacherClubHours = (teacherId: string): number => {
+    const teacherSchedule = schedules.find(s => s.teacherId === teacherId);
+    if (!teacherSchedule) return 0;
+    
+    let clubHours = 0;
+    
+    // Perşembe günü 9-10. saatlerde İlkokul kulüp dersleri
+    const ilkokulClubSlots = ['9', '10'];
+    // Perşembe günü 7-8. saatlerde Ortaokul kulüp dersleri
+    const ortaokulClubSlots = ['7', '8'];
+    
+    // Perşembe gününü kontrol et
+    const thursdaySlots = teacherSchedule.schedule['Perşembe'] || {};
+    
+    // İlkokul kulüp saatlerini kontrol et
+    ilkokulClubSlots.forEach(period => {
+      const slot = thursdaySlots[period];
+      if (slot && slot.classId && slot.classId !== 'fixed-period') {
+        // Sınıfın seviyesini kontrol et
+        const classItem = classes.find(c => c.id === slot.classId);
+        if (classItem && (classItem.level === 'İlkokul' || classItem.level === 'Anaokulu')) {
+          clubHours++;
+        }
+      }
+    });
+    
+    // Ortaokul kulüp saatlerini kontrol et
+    ortaokulClubSlots.forEach(period => {
+      const slot = thursdaySlots[period];
+      if (slot && slot.classId && slot.classId !== 'fixed-period') {
+        // Sınıfın seviyesini kontrol et
+        const classItem = classes.find(c => c.id === slot.classId);
+        if (classItem && classItem.level === 'Ortaokul') {
+          clubHours++;
+        }
+      }
+    });
+    
+    return clubHours;
+  };
+  
+  const getTeacherTargetHoursInClass = (teacherId: string, classAssignments: any[]): number => {
+    const assignment = classAssignments.find(a => a.teacherId === teacherId);
+    if (!assignment) return 0;
+    return assignment.subjectIds.reduce((total: number, subjectId: string) => {
+      const subject = subjects.find(s => s.id === subjectId);
+      return total + (subject?.weeklyHours || 0);
+    }, 0);
+  };
+
   if (loading) { return <div className="flex items-center justify-center h-64"><div className="mobile-loading"><div className="mobile-loading-spinner"></div><div className="mobile-loading-text">Yükleniyor...</div></div></div>; }
 
   return (
@@ -187,7 +254,7 @@ const Teachers = () => {
               <thead className="bg-gray-50"><tr><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ad Soyad & Yükü</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Branş</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Seviye</th><th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">İşlemler</th></tr></thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {sortedTeachers.map((teacher) => {
-                  // *** BAŞLANGIÇ: DİNAMİK VE SEVİYEYE GÖRE HESAPLAMA ***
+                  // *** DÜZELTME: Kulüp öğretmenleri için özel hesaplama ***
                   const teacherSchedule = schedules.find(s => s.teacherId === teacher.id);
                   
                   // 1. Gerçekleşen (atanan) saatleri seviyeye göre hesapla
@@ -203,6 +270,37 @@ const Teachers = () => {
                           }
                         }
                       });
+                    });
+                  }
+
+                  // DÜZELTME: Kulüp dersleri için özel kontrol
+                  const isClubTeacher = teacher.name.toUpperCase().includes('KULÜP');
+                  const clubHours = getTeacherClubHours(teacher.id);
+                  
+                  if (isClubTeacher && clubHours > 0) {
+                    // Kulüp öğretmeni ve ders ataması var, seviyeye göre ekle
+                    const classItems = classes.filter(c => {
+                      // Perşembe günü ilgili saatlerde bu öğretmenin atandığı sınıfları bul
+                      const teacherSchedule = schedules.find(s => s.teacherId === teacher.id);
+                      if (!teacherSchedule) return false;
+                      
+                      const thursdaySlots = teacherSchedule.schedule['Perşembe'] || {};
+                      
+                      // İlkokul kulüp saatleri: 9-10
+                      if (c.level === 'İlkokul' || c.level === 'Anaokulu') {
+                        return thursdaySlots['9']?.classId === c.id || thursdaySlots['10']?.classId === c.id;
+                      }
+                      
+                      // Ortaokul kulüp saatleri: 7-8
+                      if (c.level === 'Ortaokul') {
+                        return thursdaySlots['7']?.classId === c.id || thursdaySlots['8']?.classId === c.id;
+                      }
+                      
+                      return false;
+                    });
+                    
+                    classItems.forEach(c => {
+                      actualHoursByLevel[c.level] = (actualHoursByLevel[c.level] || 0) + 2; // Her sınıf için 2 saat
                     });
                   }
 
@@ -223,7 +321,6 @@ const Teachers = () => {
                   
                   // Gösterilecek tüm seviyeleri birleştir
                   const allLevelsForTeacher = [...new Set([...Object.keys(targetHoursByLevel), ...Object.keys(actualHoursByLevel)])];
-                  // *** BİTİŞ: DİNAMİK VE SEVİYEYE GÖRE HESAPLAMA ***
 
                   return (
                     <tr key={teacher.id} className="hover:bg-gray-50">
@@ -235,7 +332,7 @@ const Teachers = () => {
                             {allLevelsForTeacher.map(level => {
                               const target = targetHoursByLevel[level as keyof typeof targetHoursByLevel] || 0;
                               const actual = actualHoursByLevel[level as keyof typeof actualHoursByLevel] || 0;
-                              if (target === 0) return null; // Hedefi olmayan seviyeyi gösterme
+                              if (target === 0 && actual === 0) return null; // Hedefi ve gerçekleşeni olmayan seviyeyi gösterme
 
                               return (
                                 <div key={level} className="flex items-center text-xs space-x-2">

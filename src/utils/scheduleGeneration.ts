@@ -231,7 +231,7 @@ export function generateSystematicSchedule(
           subjectId, 
           teacherId, 
           classId, 
-          isFixed: true // Kulüp dersleri sabit olarak işaretlenir
+          isFixed: false // DÜZELTME: Kulüp dersleri sabit olarak işaretlenmemeli
         };
         
         // Müsaitlik durumlarını güncelle
