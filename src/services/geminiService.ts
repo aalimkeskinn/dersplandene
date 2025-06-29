@@ -228,6 +228,25 @@ Lütfen her öğretmen için aşağıdaki JSON formatında program oluştur:
   }
 
   /**
+   * JSON string'ini temizleme fonksiyonu
+   */
+  private cleanJsonString(jsonString: string): string {
+    // Single-line comments (//) kaldır
+    jsonString = jsonString.replace(/\/\/.*$/gm, '');
+    
+    // Multi-line comments (/* */) kaldır
+    jsonString = jsonString.replace(/\/\*[\s\S]*?\*\//g, '');
+    
+    // Trailing commas kaldır (closing brace/bracket'tan önce)
+    jsonString = jsonString.replace(/,(\s*[}\]])/g, '$1');
+    
+    // Extra whitespace ve newlines temizle
+    jsonString = jsonString.replace(/\s+/g, ' ').trim();
+    
+    return jsonString;
+  }
+
+  /**
    * Gemini yanıtını parse etme
    */
   private parseGeminiResponse(
@@ -238,36 +257,69 @@ Lütfen her öğretmen için aşağıdaki JSON formatında program oluştur:
     mappings: SubjectTeacherMapping[]
   ): any {
     try {
+      console.log('🔍 Gemini yanıtı parse ediliyor...');
+      
       // JSON formatını bul ve parse et
       const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/);
       let scheduleData;
       
       if (jsonMatch) {
-        scheduleData = JSON.parse(jsonMatch[1]);
+        console.log('✅ JSON code block bulundu');
+        let jsonString = jsonMatch[1];
+        jsonString = this.cleanJsonString(jsonString);
+        scheduleData = JSON.parse(jsonString);
       } else {
-        // Alternatif: Tüm yanıtı JSON olarak parse etmeyi dene
+        console.log('⚠️ JSON code block bulunamadı, alternatif yöntemler deneniyor...');
+        
+        // Alternatif 1: Tüm yanıtı JSON olarak parse etmeyi dene
         try {
-          scheduleData = JSON.parse(response);
+          let cleanedResponse = this.cleanJsonString(response);
+          scheduleData = JSON.parse(cleanedResponse);
+          console.log('✅ Tüm yanıt JSON olarak parse edildi');
         } catch (e) {
-          console.error('JSON parse hatası, metin içinde JSON aranıyor...');
+          console.log('⚠️ Tüm yanıt JSON değil, metin içinde JSON aranıyor...');
           
-          // Metin içinde JSON formatını bul
+          // Alternatif 2: Metin içinde JSON formatını bul
           const jsonStartIndex = response.indexOf('[');
           const jsonEndIndex = response.lastIndexOf(']') + 1;
           
           if (jsonStartIndex >= 0 && jsonEndIndex > jsonStartIndex) {
-            const jsonText = response.substring(jsonStartIndex, jsonEndIndex);
+            let jsonText = response.substring(jsonStartIndex, jsonEndIndex);
+            jsonText = this.cleanJsonString(jsonText);
             scheduleData = JSON.parse(jsonText);
+            console.log('✅ Metin içinden JSON extract edildi');
           } else {
-            throw new Error('Gemini yanıtında JSON formatı bulunamadı');
+            // Alternatif 3: Curly braces ile object arama
+            const objStartIndex = response.indexOf('{');
+            const objEndIndex = response.lastIndexOf('}') + 1;
+            
+            if (objStartIndex >= 0 && objEndIndex > objStartIndex) {
+              let objText = response.substring(objStartIndex, objEndIndex);
+              objText = this.cleanJsonString(objText);
+              
+              // Eğer tek bir object ise array'e çevir
+              const parsedObj = JSON.parse(objText);
+              scheduleData = Array.isArray(parsedObj) ? parsedObj : [parsedObj];
+              console.log('✅ Object formatından JSON oluşturuldu');
+            } else {
+              throw new Error('Gemini yanıtında geçerli JSON formatı bulunamadı');
+            }
           }
         }
       }
       
-      console.log('✅ Gemini yanıtı başarıyla parse edildi');
+      // Sonucun array olduğunu kontrol et
+      if (!Array.isArray(scheduleData)) {
+        console.log('⚠️ Sonuç array değil, array'e çevriliyor...');
+        scheduleData = [scheduleData];
+      }
+      
+      console.log('✅ Gemini yanıtı başarıyla parse edildi, öğretmen sayısı:', scheduleData.length);
       return scheduleData;
+      
     } catch (error) {
-      console.error('Gemini yanıtı parse edilemedi:', error);
+      console.error('❌ Gemini yanıtı parse edilemedi:', error);
+      console.error('📝 Ham yanıt:', response.substring(0, 500) + '...');
       throw new Error('AI yanıtı işlenemedi');
     }
   }
