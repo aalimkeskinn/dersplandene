@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Plus, Edit, Trash2, Users, Search, X, BookOpen, Clock } from 'lucide-react';
 import { Teacher, EDUCATION_LEVELS, Subject, Schedule, Class } from '../types';
 import { useFirestore } from '../hooks/useFirestore';
@@ -40,7 +40,6 @@ const Teachers = () => {
     branch: '',
     levels: [] as ('Anaokulu' | 'İlkokul' | 'Ortaokul')[],
     subjectIds: [] as string[],
-    maxWeeklyHours: '30', // YENİ: Maksimum haftalık ders saati
   });
 
   useEffect(() => {
@@ -190,15 +189,13 @@ const Teachers = () => {
     if (!formData.branch) { error('❌ Branş Seçimi Gerekli', 'Lütfen bir branş seçin.'); return; }
     if (formData.levels.length === 0) { error('❌ Eğitim Seviyesi Gerekli', 'En az bir eğitim seviyesi seçmelisiniz.'); return; }
     try {
-      const maxWeeklyHours = parseInt(formData.maxWeeklyHours) || 30;
       const teacherData = { 
         name: formData.name, 
         branch: formData.branch, 
         branches: [formData.branch], 
         level: formData.levels[0], 
         levels: formData.levels, 
-        subjectIds: formData.subjectIds,
-        maxWeeklyHours: maxWeeklyHours // YENİ: Maksimum haftalık ders saati
+        subjectIds: formData.subjectIds
       };
       if (editingTeacher) {
         await update(editingTeacher.id, teacherData);
@@ -225,8 +222,7 @@ const Teachers = () => {
             branch: teacher.branch, 
             level: teacher.level as Teacher['level'], 
             branches: [teacher.branch], 
-            levels: [teacher.level as 'Anaokulu' | 'İlkokul' | 'Ortaokul'],
-            maxWeeklyHours: 30 // Varsayılan maksimum ders saati
+            levels: [teacher.level as 'Anaokulu' | 'İlkokul' | 'Ortaokul']
           } as Omit<Teacher, 'id' | 'createdAt'>);
         }
       }
@@ -239,13 +235,7 @@ const Teachers = () => {
   };
 
   const resetForm = () => { 
-    setFormData({ 
-      name: '', 
-      branch: '', 
-      levels: [], 
-      subjectIds: [],
-      maxWeeklyHours: '30' // Varsayılan maksimum ders saati
-    }); 
+    setFormData({ name: '', branch: '', levels: [], subjectIds: [] }); 
     setEditingTeacher(null); 
     setIsModalOpen(false); 
   };
@@ -255,8 +245,7 @@ const Teachers = () => {
       name: teacher.name, 
       branch: teacher.branch, 
       levels: teacher.levels || [teacher.level], 
-      subjectIds: teacher.subjectIds || [],
-      maxWeeklyHours: teacher.maxWeeklyHours?.toString() || '30' // Mevcut maksimum ders saati
+      subjectIds: teacher.subjectIds || []
     }); 
     setEditingTeacher(teacher); 
     setIsModalOpen(true); 
@@ -313,7 +302,7 @@ const Teachers = () => {
       </div>
 
       <div className="mobile-card mobile-spacing mb-6">
-        <div className="mobile-form-group"><label className="mobile-form-label">🔍 Öğretmen Ara</label><div className="relative"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Search className="h-5 w-5 text-gray-400" /></div><input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={handleSearchKeyDown} placeholder="Öğretmen adı veya branş ara... (Enter ile ara)" className="block w-full pl-10 pr-10 py-3 text-base border-2 border-gray-300 rounded-lg bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200" title="Enter ile ara, ESC ile temizle" />{searchQuery && (<div className="absolute inset-y-0 right-0 pr-3 flex items-center"><button onClick={clearSearch} className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500" title="Aramayı temizle"><X className="w-5 w-5" /></button></div>)}</div>{searchQuery && (<div className="mt-2 flex items-center justify-between"><p className="text-sm text-blue-600">🔍 "{searchQuery}" için {sortedTeachers.length} sonuç bulundu</p><button onClick={clearSearch} className="text-xs text-gray-500 hover:text-gray-700 underline">Temizle</button></div>)}</div>
+        <div className="mobile-form-group"><label className="mobile-form-label">🔍 Öğretmen Ara</label><div className="relative"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Search className="h-5 w-5 text-gray-400" /></div><input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={handleSearchKeyDown} placeholder="Öğretmen adı veya branş ara... (Enter ile ara)" className="block w-full pl-10 pr-10 py-3 text-base border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200" title="Enter ile ara, ESC ile temizle" />{searchQuery && (<div className="absolute inset-y-0 right-0 pr-3 flex items-center"><button onClick={clearSearch} className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500" title="Aramayı temizle"><X className="w-5 w-5" /></button></div>)}</div>{searchQuery && (<div className="mt-2 flex items-center justify-between"><p className="text-sm text-blue-600">🔍 "{searchQuery}" için {sortedTeachers.length} sonuç bulundu</p><button onClick={clearSearch} className="text-xs text-gray-500 hover:text-gray-700 underline">Temizle</button></div>)}</div>
         <div className="responsive-grid-2 gap-responsive"><Select label="Seviye Filtresi" value={levelFilter} onChange={setLevelFilter} options={levelFilterOptions} /><Select label="Branş Filtresi" value={branchFilter} onChange={setBranchFilter} options={branchFilterOptions} /></div>
       </div>
 
@@ -397,7 +386,7 @@ const Teachers = () => {
                   const totalTargetHours = Object.values(targetHoursByLevel).reduce((sum, hours) => sum + hours, 0);
                   
                   // Maksimum ders saati kontrolü
-                  const maxWeeklyHours = teacher.maxWeeklyHours || 30;
+                  const maxWeeklyHours = 45; // Haftalık maksimum 45 saat
                   const isOverloaded = totalActualHours > maxWeeklyHours;
 
                   return (
@@ -409,7 +398,7 @@ const Teachers = () => {
                           isOverloaded ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'
                         }`}>
                           <Clock size={12} className="mr-1" />
-                          {totalActualHours} / {maxWeeklyHours} saat
+                          {totalActualHours} / {totalTargetHours} saat
                           {isOverloaded && <span className="ml-1 text-red-600">⚠️</span>}
                         </div>
                         
@@ -450,16 +439,6 @@ const Teachers = () => {
         <form onSubmit={handleSubmit}>
           <Input label="Ad Soyad" value={formData.name} onChange={(value) => setFormData({ ...formData, name: value })} placeholder="Örn: Ahmet Yılmaz" required />
           <Select label="Branş" value={formData.branch} onChange={(value) => setFormData({ ...formData, branch: value })} options={branchOptions} required />
-          
-          {/* YENİ: Maksimum haftalık ders saati alanı */}
-          <Input 
-            label="Maksimum Haftalık Ders Saati" 
-            type="number" 
-            value={formData.maxWeeklyHours} 
-            onChange={(value) => setFormData({ ...formData, maxWeeklyHours: value })} 
-            placeholder="Örn: 30" 
-            required 
-          />
           
           <div className="mb-4"><label className="block text-sm font-semibold text-gray-800 mb-2">Eğitim Seviyeleri <span className="text-red-500">*</span></label><div className="flex flex-wrap gap-3">{EDUCATION_LEVELS.map((level) => (<label key={level} className={`flex items-center p-3 border-2 rounded-lg cursor-pointer transition-all ${formData.levels.includes(level) ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}><input type="checkbox" checked={formData.levels.includes(level)} onChange={() => handleLevelToggle(level)} className="sr-only" /><span className="text-sm font-medium">{level}</span>{formData.levels.includes(level) && (<span className="ml-2 text-blue-600">✓</span>)}</label>))}</div>{formData.levels.length > 0 && (<p className="text-xs text-blue-600 mt-2">✨ Seçilen seviyeler: {formData.levels.join(', ')}</p>)}</div>
           <div className="mt-6 pt-6 border-t border-gray-200">

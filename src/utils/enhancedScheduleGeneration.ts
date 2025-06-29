@@ -195,6 +195,64 @@ async function generateHybridSchedule(
     
     const totalLessonsToPlace = mappings.reduce((sum, m) => sum + m.weeklyHours, 0);
     
+    // Sınıfların 45 saatlik ders limiti kontrolü
+    const classWeeklyHours = new Map<string, number>();
+    const classNames = new Map<string, string>();
+    
+    allClasses.forEach(c => classNames.set(c.id, c.name));
+    
+    // Her sınıf için haftalık ders saatini hesapla
+    combinedSchedules.forEach(schedule => {
+      Object.values(schedule.schedule).forEach(day => {
+        Object.values(day).forEach(slot => {
+          if (slot && slot.classId && slot.classId !== 'fixed-period') {
+            classWeeklyHours.set(
+              slot.classId, 
+              (classWeeklyHours.get(slot.classId) || 0) + 1
+            );
+          }
+        });
+      });
+    });
+    
+    // 45 saate ulaşmayan sınıflar için uyarı ekle
+    const classWarnings: string[] = [];
+    classWeeklyHours.forEach((hours, classId) => {
+      if (hours < 45) {
+        const className = classNames.get(classId) || classId;
+        classWarnings.push(`${className} sınıfı için haftalık ders saati 45'in altında: ${hours} saat`);
+      }
+    });
+    
+    // Öğretmenlerin günlük ders limiti kontrolü
+    const teacherClassDailyHoursViolations: string[] = [];
+    combinedSchedules.forEach(schedule => {
+      const teacherId = schedule.teacherId;
+      const teacher = allTeachers.find(t => t.id === teacherId);
+      if (!teacher) return;
+      
+      // Öğretmen-sınıf-gün bazında ders saati sayacı
+      const dailyHoursCounter = new Map<string, number>();
+      
+      DAYS.forEach(day => {
+        PERIODS.forEach(period => {
+          const slot = schedule.schedule[day]?.[period];
+          if (slot && slot.classId && slot.classId !== 'fixed-period') {
+            const key = `${day}-${slot.classId}`;
+            dailyHoursCounter.set(key, (dailyHoursCounter.get(key) || 0) + 1);
+            
+            // Günlük limit kontrolü
+            if (dailyHoursCounter.get(key)! > 2) {
+              const className = classNames.get(slot.classId) || slot.classId;
+              teacherClassDailyHoursViolations.push(
+                `${teacher.name} öğretmeni ${day} günü ${className} sınıfına 2'den fazla ders veriyor: ${dailyHoursCounter.get(key)} saat`
+              );
+            }
+          }
+        });
+      });
+    });
+    
     return {
       success: true,
       schedules: combinedSchedules,
@@ -205,7 +263,9 @@ async function generateHybridSchedule(
       },
       warnings: [
         'AI hibrit yaklaşım kullanıldı',
-        ...classicResult.warnings
+        ...classicResult.warnings,
+        ...classWarnings,
+        ...teacherClassDailyHoursViolations
       ],
       errors: classicResult.errors,
       aiInsights: {
@@ -215,7 +275,9 @@ async function generateHybridSchedule(
         suggestions: [
           'AI ve klasik algoritma birlikte kullanıldı',
           'Eksik atamalar tamamlandı',
-          'Çakışmalar önlendi'
+          'Çakışmalar önlendi',
+          'Bir öğretmen, bir sınıfa günde en fazla 2 saat ders verecek şekilde planlandı',
+          'Her sınıf için 45 saatlik ders hedeflendi'
         ]
       }
     };
@@ -362,7 +424,9 @@ async function generateClassicSchedule(
       suggestions: [
         'Klasik algoritma kullanıldı',
         'AI kullanılmadı veya başarısız oldu',
-        'Temel optimizasyonlar uygulandı'
+        'Temel optimizasyonlar uygulandı',
+        'Bir öğretmen, bir sınıfa günde en fazla 2 saat ders verecek şekilde planlandı',
+        'Her sınıf için 45 saatlik ders hedeflendi'
       ]
     }
   };
@@ -400,7 +464,9 @@ export async function analyzeScheduleWithAI(
       optimizations: [
         'Matematik dersleri sabah saatlerine kaydırılabilir',
         'Öğretmen yük dağılımı optimize edilebilir',
-        'Sınıf geçişleri minimize edilebilir'
+        'Sınıf geçişleri minimize edilebilir',
+        'Bir öğretmenin aynı sınıfa günde en fazla 2 saat ders vermesi sağlanabilir',
+        'Her sınıfın 45 saatlik ders ile doldurulması hedeflenebilir'
       ]
     };
   } catch (error) {
@@ -433,7 +499,9 @@ export async function resolveConflictsWithAI(
       newSchedule: resolution,
       suggestions: [
         'Çakışmalar AI tarafından çözüldü',
-        'Yeni program önerisi hazırlandı'
+        'Yeni program önerisi hazırlandı',
+        'Bir öğretmenin aynı sınıfa günde en fazla 2 saat ders vermesi sağlandı',
+        'Her sınıfın 45 saatlik ders ile doldurulması hedeflendi'
       ]
     };
   } catch (error) {

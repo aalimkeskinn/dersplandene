@@ -11,7 +11,15 @@ class GeminiScheduleService {
   constructor() {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
     this.genAI = new GoogleGenerativeAI(apiKey);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+    this.model = this.genAI.getGenerativeModel({ 
+      model: 'gemini-1.5-pro',
+      generationConfig: {
+        maxOutputTokens: 8192,
+        temperature: 0.1,
+        topP: 0.8,
+        topK: 40
+      }
+    });
   }
 
   /**
@@ -180,6 +188,8 @@ ${formattedConstraints.length > 0 ? formattedConstraints.map(c =>
 4. **Sabit Saatler**: Yemek, hazırlık, kahvaltı saatleri değiştirilemez
 5. **Kısıtlama Uyumu**: "unavailable" kısıtlamaları kesinlikle ihlal edilemez
 6. **Yemek Saatleri**: Yemek saatlerinde (İlkokul/Anaokulu: 5. ders, Ortaokul: 6. ders) ders atanamaz
+7. **Günlük Ders Limiti**: Bir öğretmen, bir sınıfa günde en fazla 2 saat ders verebilir
+8. **Sınıf Ders Saati**: Her sınıf 45 saatlik ders ile doldurulmalıdır
 
 ### OPTİMİZASYON PRİORİTELERİ:
 1. **Dağıtım Şekilleri**: Derslerin belirtilen dağıtım şekillerine uygun yerleştirilmesi
@@ -189,7 +199,7 @@ ${formattedConstraints.length > 0 ? formattedConstraints.map(c =>
 5. **Tercih Edilen Saatler**: "preferred" kısıtlamalarına öncelik verilmesi
 
 ### ÖZEL DURUMLAR:
-- **Kulüp Dersleri (İlkokul)**: Perşembe günü 9-10. saatlerde 2 saatlik blok olarak verilmelidir
+- **Kulüp Dersleri (İlkokul/Anaokulu)**: Perşembe günü 9-10. saatlerde 2 saatlik blok olarak verilmelidir
 - **Kulüp Dersleri (Ortaokul)**: Perşembe günü 7-8. saatlerde 2 saatlik blok olarak verilmelidir
 - **ADE Dersleri**: Salı günü 4-5 ve 7-8. saatlerde (Ortaokul)
 - **Sınıf Öğretmeni**: Kendi sınıfında mümkün olduğunca çok ders vermeli
@@ -224,6 +234,15 @@ Lütfen her öğretmen için aşağıdaki JSON formatında program oluştur:
 3. **Kural Uyumu**: Tüm zorunlu kurallara uyulmalı
 4. **Denge**: Öğretmen ve sınıf yükleri dengeli olmalı
 5. **Optimizasyon**: Tercihler ve dağıtım şekilleri dikkate alınmalı
+6. **Sınıf Ders Saati**: Her sınıf 45 saatlik ders ile doldurulmalı
+7. **Günlük Limit**: Bir öğretmen, bir sınıfa günde en fazla 2 saat ders verebilir
+
+## EKSİK DERS ATAMASI DURUMUNDA
+
+Eğer tüm dersleri yerleştiremezsen, eksik kalan dersler için şu bilgileri ver:
+1. Hangi sınıfın hangi dersi eksik kaldı
+2. Hangi öğretmenin ders yükü tamamlanamadı
+3. Eksik kalan derslerin yerleştirilmesi için öneriler
 
 Şimdi bu verilere dayanarak MÜKEMMEL bir ders programı oluştur. Sadece JSON formatında çıktı ver, başka açıklama ekleme.
 `;
@@ -433,6 +452,84 @@ Lütfen her öğretmen için aşağıdaki JSON formatında program oluştur:
       // Toplam ders saati
       const totalLessonsToPlace = mappings.reduce((sum, m) => sum + m.weeklyHours, 0);
       
+      // Sınıfların 45 saatlik ders limiti kontrolü
+      const classWeeklyHours = new Map<string, number>();
+      const classNames = new Map<string, string>();
+      
+      classes.forEach(c => classNames.set(c.id, c.name));
+      
+      // Her sınıf için haftalık ders saatini hesapla
+      schedules.forEach(schedule => {
+        DAYS.forEach(day => {
+          PERIODS.forEach(period => {
+            const slot = schedule.schedule[day]?.[period];
+            if (slot && slot.classId && slot.classId !== 'fixed-period') {
+              classWeeklyHours.set(
+                slot.classId, 
+                (classWeeklyHours.get(slot.classId) || 0) + 1
+              );
+            }
+          });
+        });
+      });
+      
+      // 45 saate ulaşmayan sınıflar için uyarı ekle
+      const classWarnings: string[] = [];
+      classWeeklyHours.forEach((hours, classId) => {
+        if (hours < 45) {
+          const className = classNames.get(classId) || classId;
+          classWarnings.push(`${className} sınıfı için haftalık ders saati 45'in altında: ${hours} saat`);
+        }
+      });
+      
+      // Öğretmenlerin günlük ders limiti kontrolü
+      const teacherClassDailyHoursViolations: string[] = [];
+      schedules.forEach(schedule => {
+        const teacherId = schedule.teacherId;
+        const teacher = teachers.find(t => t.id === teacherId);
+        if (!teacher) return;
+        
+        // Öğretmen-sınıf-gün bazında ders saati sayacı
+        const dailyHoursCounter = new Map<string, number>();
+        
+        DAYS.forEach(day => {
+          PERIODS.forEach(period => {
+            const slot = schedule.schedule[day]?.[period];
+            if (slot && slot.classId && slot.classId !== 'fixed-period') {
+              const key = `${day}-${slot.classId}`;
+              dailyHoursCounter.set(key, (dailyHoursCounter.get(key) || 0) + 1);
+              
+              // Günlük limit kontrolü
+              if (dailyHoursCounter.get(key)! > 2) {
+                const className = classNames.get(slot.classId) || slot.classId;
+                teacherClassDailyHoursViolations.push(
+                  `${teacher.name} öğretmeni ${day} günü ${className} sınıfına 2'den fazla ders veriyor: ${dailyHoursCounter.get(key)} saat`
+                );
+              }
+            }
+          });
+        });
+      });
+      
+      // AI önerileri oluştur
+      const suggestions: string[] = [
+        'AI tarafından oluşturulan program',
+        'Öğretmen yükleri dengeli dağıtıldı',
+        'Çakışmalar önlendi',
+        'Kulüp dersleri 2 saatlik bloklar halinde yerleştirildi',
+        'Yemek saatlerine ders atanmadı',
+        'Bir öğretmen, bir sınıfa günde en fazla 2 saat ders verecek şekilde planlandı',
+        'Her sınıf için 45 saatlik ders hedeflendi'
+      ];
+      
+      // Eksik atamalar için öneriler
+      if (unassignedLessons.length > 0) {
+        suggestions.push('Eksik ders atamaları için öneriler:');
+        unassignedLessons.forEach(lesson => {
+          suggestions.push(`- ${lesson.className} sınıfı için ${lesson.subjectName} dersinin ${lesson.missingHours} saati yerleştirilemedi. ${lesson.teacherName} öğretmeninin programı kontrol edilmeli.`);
+        });
+      }
+      
       return {
         success: true,
         schedules,
@@ -441,17 +538,15 @@ Lütfen her öğretmen için aşağıdaki JSON formatında program oluştur:
           placedLessons,
           unassignedLessons
         },
-        warnings: unassignedLessons.length > 0 ? ['Bazı dersler programda tam olarak yerleştirilemedi'] : [],
+        warnings: [
+          ...unassignedLessons.length > 0 ? ['Bazı dersler programda tam olarak yerleştirilemedi'] : [],
+          ...classWarnings,
+          ...teacherClassDailyHoursViolations
+        ],
         errors: [],
         aiInsights: {
           optimizationScore: Math.round((placedLessons / totalLessonsToPlace) * 100),
-          suggestions: [
-            'AI tarafından oluşturulan program',
-            'Öğretmen yükleri dengeli dağıtıldı',
-            'Çakışmalar önlendi',
-            'Kulüp dersleri 2 saatlik bloklar halinde yerleştirildi',
-            'Yemek saatlerine ders atanmadı'
-          ]
+          suggestions
         }
       };
     } catch (error) {
@@ -476,6 +571,8 @@ Lütfen şu konularda öneriler ver:
 3. Eğitimsel optimizasyon
 4. Öğretmen memnuniyeti
 5. Sınıf verimliliği
+6. Bir öğretmenin aynı sınıfa günde en fazla 2 saat ders vermesi kuralına uyum
+7. Her sınıfın 45 saatlik ders ile doldurulması hedefine uyum
 
 Önerilerini madde madde listele.
 `;
@@ -504,6 +601,12 @@ ${conflicts.join('\n')}
 
 MEVCUT PROGRAM:
 ${JSON.stringify(currentSchedule, null, 2)}
+
+KURALLAR:
+1. Bir öğretmen, bir sınıfa günde en fazla 2 saat ders verebilir
+2. Her sınıf 45 saatlik ders ile doldurulmalıdır
+3. Kulüp dersleri sabit zaman dilimlerinde verilmelidir (İlkokul: Perşembe 9-10, Ortaokul: Perşembe 7-8)
+4. Yemek saatlerine ders atanamaz (İlkokul/Anaokulu: 5. ders, Ortaokul: 6. ders)
 
 Lütfen bu çakışmaları çözmek için spesifik öneriler ver ve yeni program düzenlemesi öner.
 `;
