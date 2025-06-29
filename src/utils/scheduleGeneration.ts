@@ -312,11 +312,7 @@ export function generateSystematicSchedule(
                           !classAvailability.get(classId)?.has(slotKey) && 
                           !isTeacherUnavailable;
       
-      // YENİ: Öğretmenin bu sınıfa bu gün için ders saati limitini kontrol et
-      const teacherDailyHoursForClass = teacherClassDailyHours.get(teacherId)?.get(slot.day)?.get(classId) || 0;
-      const isTeacherClassDailyLimitReached = teacherDailyHoursForClass >= 2;
-      
-      if (isAvailable && !isTeacherClassDailyLimitReached) {
+      if (isAvailable) {
         classScheduleGrids[classId][slot.day][slot.period] = { 
           subjectId, 
           teacherId, 
@@ -325,20 +321,8 @@ export function generateSystematicSchedule(
         };
         teacherAvailability.get(teacherId)!.add(slotKey);
         classAvailability.get(classId)!.add(slotKey);
-        
-        // Ders saati sayacını güncelle
         const currentHours = teacherLevelActualHours.get(teacherId)?.get(classLevel) || 0;
         teacherLevelActualHours.get(teacherId)?.set(classLevel, currentHours + 1);
-        
-        // YENİ: Öğretmen-sınıf günlük ders saati takibini güncelle
-        if (!teacherClassDailyHours.get(teacherId)!.get(slot.day)!.has(classId)) {
-          teacherClassDailyHours.get(teacherId)!.get(slot.day)!.set(classId, 0);
-        }
-        teacherClassDailyHours.get(teacherId)!.get(slot.day)!.set(
-          classId, 
-          (teacherClassDailyHours.get(teacherId)!.get(slot.day)!.get(classId) || 0) + 1
-        );
-        
         placed = true;
         task.isPlaced = true;
         break;
@@ -373,7 +357,7 @@ export function generateSystematicSchedule(
 
     // DÜZELTME: Öğretmenin maksimum ders saati kontrolü
     const currentTeacherTotalHours = Array.from(teacherLevelActualHours.get(teacherId)?.values() || []).reduce((sum, hours) => sum + hours, 0);
-    const teacherMaxHours = globalRules.teacherMaxHours?.[teacherId] || 30; // Varsayılan maksimum 30 saat
+    const teacherMaxHours = 45; // Haftalık maksimum 45 saat
     
     if (currentTeacherTotalHours + blockLength > teacherMaxHours) {
       console.warn(`UYARI: ${teacher.name} öğretmeni maksimum ders saatine (${teacherMaxHours}) ulaştı. Şu anki: ${currentTeacherTotalHours}, Eklenecek: ${blockLength}`);

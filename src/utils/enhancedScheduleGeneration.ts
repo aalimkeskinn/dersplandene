@@ -133,9 +133,9 @@ async function generateHybridSchedule(
   const assignedHoursMap = new Map<string, number>();
   
   // AI tarafından atanan dersleri say
-  aiSchedules.forEach((schedule: any) => {
-    Object.values(schedule.schedule).forEach((day: any) => {
-      Object.values(day).forEach((slot: any) => {
+  aiSchedules.forEach(schedule => {
+    Object.values(schedule.schedule).forEach(day => {
+      Object.values(day).forEach(slot => {
         if (slot && slot.classId && slot.subjectId) {
           const mappingKey = `${slot.classId}-${slot.subjectId}`;
           completedMappings.add(mappingKey);
@@ -456,7 +456,7 @@ export async function analyzeScheduleWithAI(
       classes,
       subjects
     });
-    
+
     return {
       score: 85, // AI'dan gelen skor
       suggestions,
@@ -506,9 +506,6 @@ export async function resolveConflictsWithAI(
     };
   } catch (error) {
     console.error('AI çakışma çözüm hatası:', error);
-    return {
-      success: false,
-      error: 'AI çakışma çözümü başarısız'
-    };
+    throw error;
   }
 }

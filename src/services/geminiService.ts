@@ -146,17 +146,23 @@ ${teachers.filter(t => wizardData.teachers.selectedTeachers.includes(t.id)).map(
 `).join('')}
 
 ## SINIF LİSTESİ
-${classes.filter(c => wizardData.classes.selectedClasses.includes(c.id)).map(c => `
+${classes.filter(c => wizardData.classes.selectedClasses.includes(c.id)).map(c => {
+  const classTeacher = teachers.find(t => t.id === c.classTeacherId);
+  return `
 - ID: ${c.id}
   * Ad: ${c.name}
   * Seviye: ${c.level}
-  * Sınıf Öğretmeni: ${teachers.find(t => t.id === c.classTeacherId)?.name || 'Yok'}
+  * Sınıf Öğretmeni: ${classTeacher?.name || 'Yok'}
+  ${classTeacher ? `  * Sınıf Öğretmeni Dersleri: ${c.assignments?.find(a => a.teacherId === c.classTeacherId)?.subjectIds.map(sid => {
+    const subject = subjects.find(s => s.id === sid);
+    return subject ? `${subject.name} (${subject.weeklyHours} saat)` : '';
+  }).filter(Boolean).join(', ') || 'Belirtilmemiş'}` : ''}
   * Atanan Öğretmenler: ${c.assignments?.map(a => {
     const teacher = teachers.find(t => t.id === a.teacherId);
     const subjectNames = a.subjectIds.map(sid => subjects.find(s => s.id === sid)?.name).filter(Boolean);
     return `${teacher?.name} (${subjectNames.join(', ')})`;
   }).join('; ') || 'Yok'}
-`).join('')}
+`}).join('')}
 
 ## DERS LİSTESİ
 ${subjects.filter(s => wizardData.subjects.selectedSubjects.includes(s.id)).map(s => `

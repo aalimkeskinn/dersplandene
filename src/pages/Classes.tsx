@@ -1,5 +1,3 @@
-// --- START OF FILE src/pages/Classes.tsx ---
-
 import React, { useState } from 'react';
 import { Plus, Edit, Trash2, Building, Eye, Calendar, Users, ChevronDown, ChevronUp, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -72,6 +70,20 @@ const Classes = () => {
           const subject = subjects.find(s => s.id === subjectId);
           return total + (subject?.weeklyHours || 0);
       }, 0);
+  };
+
+  // YENİ: Sınıf öğretmeninin derslerini ayrı ayrı göster
+  const getClassTeacherSubjects = (classTeacherId: string, classAssignments: TeacherAssignment[]): { name: string, hours: number }[] => {
+    const assignment = classAssignments.find(a => a.teacherId === classTeacherId);
+    if (!assignment) return [];
+    
+    return assignment.subjectIds.map(subjectId => {
+      const subject = subjects.find(s => s.id === subjectId);
+      return {
+        name: subject?.name || 'Bilinmeyen Ders',
+        hours: subject?.weeklyHours || 0
+      };
+    }).sort((a, b) => b.hours - a.hours); // Ders saati çoktan aza sırala
   };
 
   const handleViewSchedule = (classId: string) => navigate(`/class-schedules?classId=${classId}`);
@@ -192,6 +204,11 @@ const Classes = () => {
             const classTeacher = teachers.find(t => t.id === classItem.classTeacherId);
             const assignedTeachers = teachers.filter(t => classItem.assignments?.some(a => a.teacherId === t.id));
             const isExpanded = expandedClass === classItem.id;
+            
+            // YENİ: Sınıf öğretmeninin derslerini al
+            const classTeacherSubjects = classTeacher 
+              ? getClassTeacherSubjects(classTeacher.id, classItem.assignments || [])
+              : [];
 
             return (
               <div key={classItem.id} className="mobile-card mobile-spacing hover:shadow-md transition-shadow">
@@ -200,10 +217,90 @@ const Classes = () => {
                   <div className="flex flex-wrap gap-1">{(classItem.levels || [classItem.level]).map((level, index) => (<span key={index} className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${level === 'Anaokulu' ? 'bg-green-100 text-green-800' : level === 'İlkokul' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>{level}</span>))}</div>
                 </div>
                 
-                {classTeacher && (<div className="mb-4 p-3 bg-blue-50 rounded-lg"><div className="flex items-start"><Users className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0 mt-1" /><div><p className="text-sm font-medium text-blue-800"><span className="font-bold">Sınıf Öğrt:</span> {classTeacher.name}</p></div></div></div>)}
-                <div className="mb-4 p-3 bg-gray-50 rounded-lg"><div className="flex items-center justify-between"><div><p className="text-sm font-medium text-gray-700">Program Durumu</p><div className="flex items-center mt-1"><div className={`w-2 h-2 rounded-full mr-2 ${weeklyHours > 0 ? 'bg-green-500' : 'bg-gray-400'}`} /><span className={`text-sm font-bold ${weeklyHours > 0 ? 'text-green-700' : 'text-gray-500'}`}>{weeklyHours > 0 ? `${weeklyHours} ders saati` : 'Program yok'}</span></div></div>{weeklyHours > 0 && <Button onClick={() => handleViewSchedule(classItem.id)} icon={Eye} size="sm" variant="secondary" />}</div></div>
-                <div className="mb-4"><button onClick={() => setExpandedClass(isExpanded ? null : classItem.id)} className="w-full text-left flex justify-between items-center p-2 bg-gray-100 rounded-md"><span className="text-sm font-medium text-gray-800">Öğretmen Ders Yükleri</span>{isExpanded ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>{isExpanded && (<div className="mt-2 space-y-2 p-3 border-l-2 border-gray-200">{assignedTeachers.length > 0 ? assignedTeachers.map(teacher => { const target = getTeacherTargetHoursInClass(teacher.id, classItem.assignments || []); const actual = getTeacherHoursInClass(teacher.id, classItem.id); const isMismatch = target !== actual; return ( <div key={teacher.id} className="flex justify-between items-center text-sm"><span className="text-gray-700">{teacher.name}</span><span className={`font-semibold px-2 py-1 rounded-full text-xs flex items-center gap-1 ${isMismatch ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}><Clock size={12}/>{actual} / {target}</span></div> )}) : <p className="text-xs text-gray-500">Bu sınıfa atanmış öğretmen yok.</p>}</div>)}</div>
-                <div className="flex justify-between items-center"><div className="flex space-x-1"><Button onClick={() => handleEdit(classItem)} icon={Edit} size="sm" variant="secondary">Düzenle</Button><Button onClick={() => handleDelete(classItem.id)} icon={Trash2} size="sm" variant="danger">Sil</Button></div><Button onClick={() => handleCreateSchedule(classItem.id)} icon={Calendar} size="sm" variant={weeklyHours > 0 ? "secondary" : "primary"}>{weeklyHours > 0 ? "Programı Düzenle" : "Program Oluştur"}</Button></div>
+                {classTeacher && (
+                  <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                    <div className="flex items-start">
+                      <Users className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0 mt-1" />
+                      <div>
+                        <p className="text-sm font-medium text-blue-800">
+                          <span className="font-bold">Sınıf Öğrt:</span> {classTeacher.name}
+                        </p>
+                        
+                        {/* YENİ: Sınıf öğretmeninin derslerini göster */}
+                        {classTeacherSubjects.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            <p className="text-xs font-medium text-blue-700">Verdiği dersler:</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {classTeacherSubjects.map((subject, idx) => (
+                                <div key={idx} className="flex items-center justify-between bg-blue-100 rounded px-2 py-1">
+                                  <span className="text-xs font-medium text-blue-800">{subject.name}</span>
+                                  <span className="text-xs bg-blue-200 text-blue-900 px-1.5 rounded">{subject.hours} sa</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="mb-4 p-3 bg-gray-50 rounded-lg"><div className="flex items-center justify-between"><div><p className="text-sm font-medium text-gray-700">Program Durumu</p><div className="flex items-center mt-1"><div className={`w-2 h-2 rounded-full mr-2 ${weeklyHours > 0 ? 'bg-green-500' : 'bg-gray-400'}`} /><span className={`text-sm font-bold ${weeklyHours > 0 ? 'text-green-700' : 'text-gray-500'}`}>{weeklyHours > 0 ? `${weeklyHours} / 45 ders saati` : 'Program yok'}</span></div></div>{weeklyHours > 0 && <Button onClick={() => handleViewSchedule(classItem.id)} icon={Eye} size="sm" variant="secondary" />}</div></div>
+                
+                <div className="mb-4">
+                  <button 
+                    onClick={() => setExpandedClass(isExpanded ? null : classItem.id)} 
+                    className="w-full text-left flex justify-between items-center p-2 bg-gray-100 rounded-md"
+                  >
+                    <span className="text-sm font-medium text-gray-800">Öğretmen Ders Yükleri</span>
+                    {isExpanded ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
+                  </button>
+                  
+                  {isExpanded && (
+                    <div className="mt-2 space-y-2 p-3 border-l-2 border-gray-200">
+                      {assignedTeachers.length > 0 ? assignedTeachers.map(teacher => { 
+                        const target = getTeacherTargetHoursInClass(teacher.id, classItem.assignments || []); 
+                        const actual = getTeacherHoursInClass(teacher.id, classItem.id); 
+                        const isMismatch = target !== actual;
+                        
+                        // YENİ: Öğretmenin bu sınıfta verdiği dersleri al
+                        const teacherSubjects = classItem.assignments
+                          ?.find(a => a.teacherId === teacher.id)?.subjectIds
+                          .map(sid => subjects.find(s => s.id === sid))
+                          .filter(Boolean)
+                          .map(s => s?.name) || [];
+                        
+                        return (
+                          <div key={teacher.id} className="flex flex-col space-y-1">
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="text-gray-700 font-medium">{teacher.name}</span>
+                              <span className={`font-semibold px-2 py-1 rounded-full text-xs flex items-center gap-1 ${isMismatch ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                                <Clock size={12}/>{actual} / {target}
+                              </span>
+                            </div>
+                            
+                            {/* YENİ: Öğretmenin verdiği dersleri göster */}
+                            {teacherSubjects.length > 0 && (
+                              <div className="pl-4 text-xs text-gray-600">
+                                Dersler: {teacherSubjects.join(', ')}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }) : <p className="text-xs text-gray-500">Bu sınıfa atanmış öğretmen yok.</p>}
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex justify-between items-center">
+                  <div className="flex space-x-1">
+                    <Button onClick={() => handleEdit(classItem)} icon={Edit} size="sm" variant="secondary">Düzenle</Button>
+                    <Button onClick={() => handleDelete(classItem.id)} icon={Trash2} size="sm" variant="danger">Sil</Button>
+                  </div>
+                  <Button onClick={() => handleCreateSchedule(classItem.id)} icon={Calendar} size="sm" variant={weeklyHours > 0 ? "secondary" : "primary"}>
+                    {weeklyHours > 0 ? "Programı Düzenle" : "Program Oluştur"}
+                  </Button>
+                </div>
               </div>
             );
           })}
@@ -217,18 +314,50 @@ const Classes = () => {
           {formData.levels.length > 0 && (
             <div className="mt-4">
               <Select label="Sınıf Öğretmeni" value={formData.classTeacherId} onChange={v => setFormData(p=>({...p, classTeacherId: v}))} options={[{value: '', label: 'Sınıf Öğretmeni Yok'}, ...getFilteredTeachersForModal().map(t=>({value: t.id, label: t.name}))]} />
+              
+              {/* YENİ: Sınıf öğretmeni seçildiğinde bilgilendirme mesajı */}
+              {formData.classTeacherId && (
+                <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-700">
+                    <strong>Not:</strong> Sınıf öğretmeni, aşağıda bu sınıf için atayacağınız dersleri verecektir. 
+                    Sınıf öğretmenine Türkçe, Matematik, Hayat Bilgisi, Fen Bilimleri gibi temel dersleri atamayı unutmayın.
+                  </p>
+                </div>
+              )}
+              
               <h3 className="font-medium mb-2 mt-4">Öğretmen ve Ders Atamaları</h3>
               <div className="space-y-2 max-h-80 overflow-y-auto border p-2 rounded-lg bg-gray-50">
                   {getFilteredTeachersForModal().length > 0 ? getFilteredTeachersForModal().map(teacher => {
                       const teacherSubjects = subjects.filter(s => (s.levels || [s.level]).some(l=>formData.levels.includes(l)) && teacher.subjectIds?.includes(s.id));
                       if (teacherSubjects.length === 0) return null;
+                      
+                      // YENİ: Sınıf öğretmeni vurgusu
+                      const isClassTeacher = teacher.id === formData.classTeacherId;
+                      
                       return (
-                          <div key={teacher.id} className="bg-white p-2 rounded-md shadow-sm">
-                              <p className="font-semibold p-1">{teacher.name} <span className="text-xs text-gray-500">({teacher.branch})</span></p>
+                          <div key={teacher.id} className={`bg-white p-2 rounded-md shadow-sm ${isClassTeacher ? 'border-2 border-blue-300' : ''}`}>
+                              <p className={`font-semibold p-1 ${isClassTeacher ? 'text-blue-700' : ''}`}>
+                                {teacher.name} 
+                                <span className="text-xs text-gray-500 ml-1">({teacher.branch})</span>
+                                {isClassTeacher && <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">Sınıf Öğretmeni</span>}
+                              </p>
                               <div className="mt-2 pl-4 border-l-2 space-y-1 pt-2">
                                   {teacherSubjects.map(subject => {
                                       const isChecked = formData.assignments.find(a=>a.teacherId === teacher.id)?.subjectIds.includes(subject.id) || false;
-                                      return (<label key={subject.id} className="flex items-center p-1 rounded hover:bg-gray-100"><input type="checkbox" checked={isChecked} onChange={e => handleAssignmentChange(teacher.id, subject.id, e.target.checked)} className="mr-2 h-4 w-4"/>{subject.name}</label>)
+                                      return (
+                                        <label key={subject.id} className="flex items-center p-1 rounded hover:bg-gray-100">
+                                          <input 
+                                            type="checkbox" 
+                                            checked={isChecked} 
+                                            onChange={e => handleAssignmentChange(teacher.id, subject.id, e.target.checked)} 
+                                            className="mr-2 h-4 w-4"
+                                          />
+                                          <span className="flex-1">{subject.name}</span>
+                                          <span className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded ml-2">
+                                            {subject.weeklyHours} saat
+                                          </span>
+                                        </label>
+                                      )
                                   })}
                               </div>
                           </div>
@@ -246,5 +375,3 @@ const Classes = () => {
   );
 };
 export default Classes;
-
-// --- END OF FILE src/pages/Classes.tsx ---
