@@ -211,6 +211,13 @@ ${formattedConstraints.length > 0 ? formattedConstraints.map(c =>
 - **Sınıf Öğretmeni**: Kendi sınıfında mümkün olduğunca çok ders vermeli
 - **Ana Dersler**: Türkçe, Matematik gibi temel dersler sabah saatlerinde tercih edilmeli
 
+## SINIF ÖĞRETMENLERİ İÇİN ÖNEMLİ KURALLAR
+1. **Öncelik**: İlkokul ve Anaokulu'nda sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirilmelidir
+2. **Ders Dağılımı**: Sınıf öğretmenleri Türkçe, Matematik, Hayat Bilgisi gibi temel dersleri verir
+3. **Dengeli Dağılım**: Sınıf öğretmeninin dersleri haftanın günlerine dengeli dağıtılmalıdır
+4. **Sabah Saatleri**: Sınıf öğretmenlerinin temel dersleri (Türkçe, Matematik) sabah saatlerinde olmalıdır
+5. **Blok Dersler**: Sınıf öğretmenlerinin dersleri mümkünse blok halinde (2 saat) yerleştirilmelidir
+
 ## ÇIKTI FORMATI
 
 Lütfen her öğretmen için aşağıdaki JSON formatında program oluştur:

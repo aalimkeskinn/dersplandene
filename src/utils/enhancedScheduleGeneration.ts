@@ -456,7 +456,7 @@ export async function analyzeScheduleWithAI(
       classes,
       subjects
     });
-
+    
     return {
       score: 85, // AI'dan gelen skor
       suggestions,

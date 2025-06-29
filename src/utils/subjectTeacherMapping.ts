@@ -21,6 +21,10 @@ export function createSubjectTeacherMappings(
   const selectedSubjectIds = new Set(wizardData.subjects.selectedSubjects);
   const selectedTeacherIds = new Set(wizardData.teachers.selectedTeachers);
 
+  // YENİ: Önce sınıf öğretmenlerinin atamalarını işle
+  const classTeacherMappings: SubjectTeacherMapping[] = [];
+  const regularMappings: SubjectTeacherMapping[] = [];
+
   for (const classId of selectedClassIds) {
     const classItem = allClasses.find(c => c.id === classId);
     if (!classItem || !classItem.assignments || classItem.assignments.length === 0) continue;
@@ -39,6 +43,9 @@ export function createSubjectTeacherMappings(
           continue; // Bu öğretmeni bu sınıf için atla
       }
 
+      // Bu öğretmen sınıf öğretmeni mi?
+      const isClassTeacher = classItem.classTeacherId === teacherId;
+
       for (const subjectId of assignment.subjectIds) {
         if (!selectedSubjectIds.has(subjectId)) continue;
         
@@ -51,8 +58,14 @@ export function createSubjectTeacherMappings(
           const distribution = subject.distributionPattern ? parseDistributionPattern(subject.distributionPattern) : undefined;
 
           const task: SubjectTeacherMapping = {
-            id: `${classId}-${subjectId}`, classId, subjectId, teacherId, weeklyHours,
-            assignedHours: 0, distribution, priority: 'medium',
+            id: `${classId}-${subjectId}`, 
+            classId, 
+            subjectId, 
+            teacherId, 
+            weeklyHours,
+            assignedHours: 0, 
+            distribution, 
+            priority: isClassTeacher ? 'high' : 'medium', // Sınıf öğretmenlerine yüksek öncelik
           };
 
           if (distribution && distribution.reduce((a, b) => a + b, 0) !== weeklyHours) {
@@ -60,11 +73,19 @@ export function createSubjectTeacherMappings(
             delete task.distribution;
           }
           
-          mappings.push(task);
+          // Sınıf öğretmeni görevlerini ayrı bir diziye ekle
+          if (isClassTeacher && (classLevel === 'İlkokul' || classLevel === 'Anaokulu')) {
+            classTeacherMappings.push(task);
+          } else {
+            regularMappings.push(task);
+          }
         }
       }
     }
   }
+
+  // Önce sınıf öğretmeni görevlerini, sonra diğer görevleri ekle
+  mappings.push(...classTeacherMappings, ...regularMappings);
   
   if (mappings.length === 0 && selectedSubjectIds.size > 0) {
     errors.push("Hiçbir geçerli ders ataması bulunamadı. Lütfen 'Sınıflar' ekranından öğretmenlere ders atadığınızdan ve sihirbazda ilgili tüm (sınıf, öğretmen, ders) öğeleri seçtiğinizden emin olun.");
