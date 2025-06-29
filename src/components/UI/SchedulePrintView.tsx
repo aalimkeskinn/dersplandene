@@ -16,7 +16,7 @@ const SchedulePrintView: React.FC<SchedulePrintViewProps> = ({
 }) => {
   const getSlotInfo = (day: string, period: string) => {
     const slot = schedule.schedule[day]?.[period];
-    if (!slot?.classId) return null;
+    if (!slot?.classId || slot.classId === 'fixed-period') return null;
 
     const classItem = classes.find(c => c.id === slot.classId);
 

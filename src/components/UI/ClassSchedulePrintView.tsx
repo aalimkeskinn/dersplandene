@@ -1,5 +1,3 @@
-// --- START OF FILE src/components/UI/ClassSchedulePrintView.tsx ---
-
 import React from 'react';
 import { Teacher, Class, Subject, DAYS, PERIODS, getTimeForPeriod, formatTimeRange } from '../../types';
 
@@ -169,4 +167,3 @@ const ClassSchedulePrintView: React.FC<ClassSchedulePrintViewProps> = ({
 };
 
 export default ClassSchedulePrintView;
-// --- END OF FILE src/components/UI/ClassSchedulePrintView.tsx ---

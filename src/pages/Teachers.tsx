@@ -81,87 +81,6 @@ const Teachers = () => {
 
   const sortedTeachers = getFilteredTeachers().sort((a, b) => a.name.localeCompare(b.name, 'tr'));
 
-  const handleDeleteAllTeachers = () => {
-    if (teachers.length === 0) {
-      warning('⚠️ Silinecek Öğretmen Yok', 'Sistemde silinecek öğretmen bulunamadı');
-      return;
-    }
-    confirmDelete(
-      `${teachers.length} Öğretmen`,
-      async () => {
-        setIsDeletingAll(true);
-        try {
-          for (const teacher of teachers) {
-            await remove(teacher.id);
-          }
-          success('🗑️ Öğretmenler Silindi', `${teachers.length} öğretmen başarıyla silindi`);
-          setLevelFilter('');
-          setBranchFilter('');
-          setSearchQuery('');
-        } catch (err) {
-          error('❌ Silme Hatası', 'Öğretmenler silinirken bir hata oluştu');
-        } finally {
-          setIsDeletingAll(false);
-        }
-      }
-    );
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.branch) { error('❌ Branş Seçimi Gerekli', 'Lütfen bir branş seçin.'); return; }
-    if (formData.levels.length === 0) { error('❌ Eğitim Seviyesi Gerekli', 'En az bir eğitim seviyesi seçmelisiniz.'); return; }
-    try {
-      const teacherData = { name: formData.name, branch: formData.branch, branches: [formData.branch], level: formData.levels[0], levels: formData.levels, subjectIds: formData.subjectIds, };
-      if (editingTeacher) {
-        await update(editingTeacher.id, teacherData);
-        success('✅ Öğretmen Güncellendi', `${formData.name} başarıyla güncellendi.`);
-      } else {
-        await add(teacherData as Omit<Teacher, 'id' | 'createdAt'>);
-        success('✅ Öğretmen Eklendi', `${formData.name} başarıyla eklendi.`);
-      }
-      resetForm();
-    } catch (err) {
-      error('❌ Hata', 'Öğretmen kaydedilirken bir hata oluştu.');
-    }
-  };
-  
-  const handleBulkSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const validTeachers = bulkTeachers.filter(t => t.name && t.branch && t.level);
-    if(validTeachers.length === 0) { error('Hata', 'Lütfen en az bir geçerli öğretmen bilgisi girin.'); return; }
-    try {
-      for (const teacher of validTeachers) {
-        if (EDUCATION_LEVELS.includes(teacher.level as any)) {
-          await add({ name: teacher.name, branch: teacher.branch, level: teacher.level as Teacher['level'], branches: [teacher.branch], levels: [teacher.level as 'Anaokulu' | 'İlkokul' | 'Ortaokul'] } as Omit<Teacher, 'id' | 'createdAt'>);
-        }
-      }
-      setBulkTeachers([{ name: '', branch: '', level: '' }]);
-      setIsBulkModalOpen(false);
-      success('✅ Öğretmenler Eklendi', `${validTeachers.length} öğretmen başarıyla eklendi`);
-    } catch (err) {
-      error('❌ Hata', 'Toplu öğretmen eklenirken bir hata oluştu.');
-    }
-  };
-
-  const resetForm = () => { setFormData({ name: '', branch: '', levels: [], subjectIds: [] }); setEditingTeacher(null); setIsModalOpen(false); };
-  const handleEdit = (teacher: Teacher) => { setFormData({ name: teacher.name, branch: teacher.branch, levels: teacher.levels || [teacher.level], subjectIds: teacher.subjectIds || [], }); setEditingTeacher(teacher); setIsModalOpen(true); };
-  const handleDelete = async (id: string) => { const teacher = teachers.find(t => t.id === id); if (teacher) { confirmDelete(teacher.name, async () => { await remove(id); success('🗑️ Öğretmen Silindi', `${teacher.name} başarıyla silindi`); }); } };
-  const handleLevelToggle = (level: 'Anaokulu' | 'İlkokul' | 'Ortaokul') => { setFormData(prev => ({ ...prev, levels: prev.levels.includes(level) ? prev.levels.filter(l => l !== level) : [...prev.levels, level] })); };
-  const handleSubjectToggle = (subjectId: string) => { setFormData(prev => ({ ...prev, subjectIds: prev.subjectIds.includes(subjectId) ? prev.subjectIds.filter(id => id !== subjectId) : [...prev.subjectIds, subjectId] })); };
-  const addBulkRow = () => setBulkTeachers([...bulkTeachers, { name: '', branch: '', level: '' }]);
-  const removeBulkRow = (index: number) => { if (bulkTeachers.length > 1) setBulkTeachers(bulkTeachers.filter((_, i) => i !== index)); };
-  const updateBulkRow = (index: number, field: string, value: string) => { const updated = [...bulkTeachers]; updated[index] = { ...updated[index], [field]: value }; setBulkTeachers(updated); };
-  const clearSearch = () => setSearchQuery('');
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') clearSearch(); };
-  const getTeacherBranchesDisplay = (teacher: Teacher) => teacher.branch;
-  const getTeacherLevelsDisplay = (teacher: Teacher) => teacher.levels || [teacher.level];
-  const filteredSubjectsForModal = subjects.filter(subject => { if (formData.levels.length === 0) return false; const subjectLevels = subject.levels || [subject.level]; return subjectLevels.some(sl => formData.levels.includes(sl)); }).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
-  const levelOptions = EDUCATION_LEVELS.map(level => ({ value: level, label: level }));
-  const branchOptions = [{ value: '', label: 'Branş Seçin...' }, ...getUniqueBranches().map(branch => ({ value: branch, label: branch }))];
-  const levelFilterOptions = [{ value: '', label: 'Tüm Seviyeler' }, ...levelOptions];
-  const branchFilterOptions = [{ value: '', label: 'Tüm Branşlar' }, ...getUniqueBranches().map(branch => ({ value: branch, label: branch }))];
-
   // DÜZELTME: Kulüp öğretmenlerinin ders saatlerini doğru hesaplama
   const getTeacherHoursInClass = (teacherId: string, classId: string): number => {
     const teacherSchedule = schedules.find(s => s.teacherId === teacherId);
@@ -194,28 +113,38 @@ const Teachers = () => {
     const thursdaySlots = teacherSchedule.schedule['Perşembe'] || {};
     
     // İlkokul kulüp saatlerini kontrol et
+    const ilkokulClassesSet = new Set<string>();
+    
     ilkokulClubSlots.forEach(period => {
       const slot = thursdaySlots[period];
       if (slot && slot.classId && slot.classId !== 'fixed-period') {
         // Sınıfın seviyesini kontrol et
         const classItem = classes.find(c => c.id === slot.classId);
         if (classItem && (classItem.level === 'İlkokul' || classItem.level === 'Anaokulu')) {
-          clubHours++;
+          ilkokulClassesSet.add(slot.classId);
         }
       }
     });
     
+    // Her sınıf için 2 saat ekle (blok ders)
+    clubHours += ilkokulClassesSet.size * 2;
+    
     // Ortaokul kulüp saatlerini kontrol et
+    const ortaokulClassesSet = new Set<string>();
+    
     ortaokulClubSlots.forEach(period => {
       const slot = thursdaySlots[period];
       if (slot && slot.classId && slot.classId !== 'fixed-period') {
         // Sınıfın seviyesini kontrol et
         const classItem = classes.find(c => c.id === slot.classId);
         if (classItem && classItem.level === 'Ortaokul') {
-          clubHours++;
+          ortaokulClassesSet.add(slot.classId);
         }
       }
     });
+    
+    // Her sınıf için 2 saat ekle (blok ders)
+    clubHours += ortaokulClassesSet.size * 2;
     
     return clubHours;
   };
@@ -228,6 +157,136 @@ const Teachers = () => {
       return total + (subject?.weeklyHours || 0);
     }, 0);
   };
+
+  const handleDeleteAllTeachers = () => {
+    if (teachers.length === 0) {
+      warning('⚠️ Silinecek Öğretmen Yok', 'Sistemde silinecek öğretmen bulunamadı');
+      return;
+    }
+    confirmDelete(
+      `${teachers.length} Öğretmen`,
+      async () => {
+        setIsDeletingAll(true);
+        try {
+          for (const teacher of teachers) {
+            await remove(teacher.id);
+          }
+          success('🗑️ Öğretmenler Silindi', `${teachers.length} öğretmen başarıyla silindi`);
+          setLevelFilter('');
+          setBranchFilter('');
+          setSearchQuery('');
+        } catch (err) {
+          error('❌ Silme Hatası', 'Öğretmenler silinirken bir hata oluştu');
+        } finally {
+          setIsDeletingAll(false);
+        }
+      }
+    );
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.branch) { error('❌ Branş Seçimi Gerekli', 'Lütfen bir branş seçin.'); return; }
+    if (formData.levels.length === 0) { error('❌ Eğitim Seviyesi Gerekli', 'En az bir eğitim seviyesi seçmelisiniz.'); return; }
+    try {
+      const teacherData = { 
+        name: formData.name, 
+        branch: formData.branch, 
+        branches: [formData.branch], 
+        level: formData.levels[0], 
+        levels: formData.levels, 
+        subjectIds: formData.subjectIds
+      };
+      if (editingTeacher) {
+        await update(editingTeacher.id, teacherData);
+        success('✅ Öğretmen Güncellendi', `${formData.name} başarıyla güncellendi.`);
+      } else {
+        await add(teacherData as Omit<Teacher, 'id' | 'createdAt'>);
+        success('✅ Öğretmen Eklendi', `${formData.name} başarıyla eklendi.`);
+      }
+      resetForm();
+    } catch (err) {
+      error('❌ Hata', 'Öğretmen kaydedilirken bir hata oluştu.');
+    }
+  };
+  
+  const handleBulkSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const validTeachers = bulkTeachers.filter(t => t.name && t.branch && t.level);
+    if(validTeachers.length === 0) { error('Hata', 'Lütfen en az bir geçerli öğretmen bilgisi girin.'); return; }
+    try {
+      for (const teacher of validTeachers) {
+        if (EDUCATION_LEVELS.includes(teacher.level as any)) {
+          await add({ 
+            name: teacher.name, 
+            branch: teacher.branch, 
+            level: teacher.level as Teacher['level'], 
+            branches: [teacher.branch], 
+            levels: [teacher.level as 'Anaokulu' | 'İlkokul' | 'Ortaokul']
+          } as Omit<Teacher, 'id' | 'createdAt'>);
+        }
+      }
+      setBulkTeachers([{ name: '', branch: '', level: '' }]);
+      setIsBulkModalOpen(false);
+      success('✅ Öğretmenler Eklendi', `${validTeachers.length} öğretmen başarıyla eklendi`);
+    } catch (err) {
+      error('❌ Hata', 'Toplu öğretmen eklenirken bir hata oluştu.');
+    }
+  };
+
+  const resetForm = () => { 
+    setFormData({ name: '', branch: '', levels: [], subjectIds: [] }); 
+    setEditingTeacher(null); 
+    setIsModalOpen(false); 
+  };
+  
+  const handleEdit = (teacher: Teacher) => { 
+    setFormData({ 
+      name: teacher.name, 
+      branch: teacher.branch, 
+      levels: teacher.levels || [teacher.level], 
+      subjectIds: teacher.subjectIds || []
+    }); 
+    setEditingTeacher(teacher); 
+    setIsModalOpen(true); 
+  };
+  
+  const handleDelete = async (id: string) => { 
+    const teacher = teachers.find(t => t.id === id); 
+    if (teacher) { 
+      confirmDelete(teacher.name, async () => { 
+        await remove(id); 
+        success('🗑️ Öğretmen Silindi', `${teacher.name} başarıyla silindi`); 
+      }); 
+    } 
+  };
+  
+  const handleLevelToggle = (level: 'Anaokulu' | 'İlkokul' | 'Ortaokul') => { 
+    setFormData(prev => ({ 
+      ...prev, 
+      levels: prev.levels.includes(level) ? prev.levels.filter(l => l !== level) : [...prev.levels, level] 
+    })); 
+  };
+  
+  const handleSubjectToggle = (subjectId: string) => { 
+    setFormData(prev => ({ 
+      ...prev, 
+      subjectIds: prev.subjectIds.includes(subjectId) ? prev.subjectIds.filter(id => id !== subjectId) : [...prev.subjectIds, subjectId] 
+    })); 
+  };
+  
+  const addBulkRow = () => setBulkTeachers([...bulkTeachers, { name: '', branch: '', level: '' }]);
+  const removeBulkRow = (index: number) => { if (bulkTeachers.length > 1) setBulkTeachers(bulkTeachers.filter((_, i) => i !== index)); };
+  const updateBulkRow = (index: number, field: string, value: string) => { const updated = [...bulkTeachers]; updated[index] = { ...updated[index], [field]: value }; setBulkTeachers(updated); };
+  const clearSearch = () => setSearchQuery('');
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') clearSearch(); };
+  const getTeacherBranchesDisplay = (teacher: Teacher) => teacher.branch;
+  const getTeacherLevelsDisplay = (teacher: Teacher) => teacher.levels || [teacher.level];
+  const filteredSubjectsForModal = subjects.filter(subject => { if (formData.levels.length === 0) return false; const subjectLevels = subject.levels || [subject.level]; return subjectLevels.some(sl => formData.levels.includes(sl)); }).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+  const levelOptions = EDUCATION_LEVELS.map(level => ({ value: level, label: level }));
+  const branchOptions = [{ value: '', label: 'Branş Seçin...' }, ...getUniqueBranches().map(branch => ({ value: branch, label: branch }))];
+  const levelFilterOptions = [{ value: '', label: 'Tüm Seviyeler' }, ...levelOptions];
+  const branchFilterOptions = [{ value: '', label: 'Tüm Branşlar' }, ...getUniqueBranches().map(branch => ({ value: branch, label: branch }))];
 
   if (loading) { return <div className="flex items-center justify-center h-64"><div className="mobile-loading"><div className="mobile-loading-spinner"></div><div className="mobile-loading-text">Yükleniyor...</div></div></div>; }
 
@@ -262,7 +321,7 @@ const Teachers = () => {
                   if (teacherSchedule) {
                     Object.values(teacherSchedule.schedule).forEach(day => {
                       Object.values(day).forEach(slot => {
-                        if (slot && !slot.isFixed && slot.classId) {
+                        if (slot && !slot.isFixed && slot.classId && slot.classId !== 'fixed-period') {
                           const classItem = classes.find(c => c.id === slot.classId);
                           if (classItem) {
                             const level = classItem.level; // Sınıfın seviyesini al
@@ -322,10 +381,22 @@ const Teachers = () => {
                   // Gösterilecek tüm seviyeleri birleştir
                   const allLevelsForTeacher = [...new Set([...Object.keys(targetHoursByLevel), ...Object.keys(actualHoursByLevel)])];
 
+                  // Toplam ders saati hesapla
+                  const totalActualHours = Object.values(actualHoursByLevel).reduce((sum, hours) => sum + hours, 0);
+                  const totalTargetHours = Object.values(targetHoursByLevel).reduce((sum, hours) => sum + hours, 0);
+
                   return (
                     <tr key={teacher.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">{teacher.name}</div>
+                        <div className={`mt-1 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          totalActualHours < totalTargetHours ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                        }`}>
+                          <Clock size={12} className="mr-1" />
+                          {totalActualHours} / {totalTargetHours} saat
+                          {totalActualHours < totalTargetHours && <span className="ml-1 text-red-600">⚠️</span>}
+                        </div>
+                        
                         {/* DEĞİŞİKLİK: Seviyeye göre ayrılmış yük gösterimi */}
                         {allLevelsForTeacher.length > 0 && (
                           <div className="mt-2 space-y-1">
