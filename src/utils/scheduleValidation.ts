@@ -48,7 +48,7 @@ export const checkSlotConflict = (
     schedulesCount: allSchedules.length
   });
 
-  // YENİ: Bir öğretmenin aynı sınıfa günde en fazla 2 saat ders verebilmesi kuralı
+  // YENİ: Bir öğretmenin aynı sınıfa günde en fazla 4 saat ders verebilmesi kuralı
   if (mode === 'teacher') {
     // Öğretmenin bu gün için bu sınıfa kaç saat ders verdiğini kontrol et
     const teacherSchedule = allSchedules.find(s => s.teacherId === currentEntityId);
@@ -62,14 +62,19 @@ export const checkSlotConflict = (
         }
       });
       
-      // Eğer öğretmen bu sınıfa bu gün zaten 2 saat ders vermişse, çakışma var
-      if (dailyHoursForClass >= 2) {
+      // Sınıf öğretmeni mi kontrol et
+      const classItem = classes.find(c => c.id === targetId);
+      const isClassTeacher = classItem?.classTeacherId === currentEntityId;
+      const maxDailyHours = isClassTeacher ? 4 : 2; // Sınıf öğretmenleri için 4, diğerleri için 2
+      
+      // Eğer öğretmen bu sınıfa bu gün zaten maksimum ders vermişse, çakışma var
+      if (dailyHoursForClass >= maxDailyHours) {
         const teacher = teachers.find(t => t.id === currentEntityId);
         const classItem = classes.find(c => c.id === targetId);
         
         return {
           hasConflict: true,
-          message: `${teacher?.name || 'Öğretmen'} ${sanitizedDay} günü ${classItem?.name || 'sınıf'} için maksimum ders saatine (2) ulaştı`
+          message: `${teacher?.name || 'Öğretmen'} ${sanitizedDay} günü ${classItem?.name || 'sınıf'} için maksimum ders saatine (${maxDailyHours}) ulaştı`
         };
       }
     }
@@ -79,9 +84,7 @@ export const checkSlotConflict = (
     // FIXED: Teacher mode - Check if class is already assigned to another teacher at this time
     const conflictingSchedules = allSchedules.filter(schedule => {
       // Skip current teacher's schedule
-      if (schedule.teacherId === currentEntityId) {
-        return false;
-      }
+      if (schedule.teacherId === currentEntityId) return false;
       
       const slot = schedule.schedule[sanitizedDay]?.[sanitizedPeriod];
       
@@ -400,6 +403,77 @@ export const validateScheduleWithConstraints = (
       }
     });
   });
+
+  // YENİ: Bir öğretmenin aynı sınıfa günde en fazla 4 saat ders verebilmesi kuralı
+  if (mode === 'teacher') {
+    // Öğretmenin her gün için her sınıfa kaç saat ders verdiğini kontrol et
+    const dailyClassHours = new Map<string, Map<string, number>>();
+    
+    DAYS.forEach(day => {
+      dailyClassHours.set(day, new Map<string, number>());
+      
+      PERIODS.forEach(period => {
+        const slot = currentSchedule[day]?.[period];
+        if (slot && slot.classId && slot.classId !== 'fixed-period') {
+          const classId = slot.classId;
+          dailyClassHours.get(day)!.set(
+            classId, 
+            (dailyClassHours.get(day)!.get(classId) || 0) + 1
+          );
+        }
+      });
+    });
+    
+    // Her gün için limit kontrolü
+    DAYS.forEach(day => {
+      dailyClassHours.get(day)!.forEach((hours, classId) => {
+        const classItem = classes.find(c => c.id === classId);
+        const isClassTeacher = classItem?.classTeacherId === selectedId;
+        const maxDailyHours = isClassTeacher ? 4 : 2; // Sınıf öğretmenleri için 4, diğerleri için 2
+        
+        if (hours > maxDailyHours) {
+          errors.push(`${day} günü ${classItem?.name || classId} sınıfına en fazla ${maxDailyHours} saat ders verilebilir (şu an: ${hours})`);
+        }
+      });
+    });
+  }
+
+  // YENİ: Bir öğretmenin aynı sınıfa günde en fazla 2 farklı ders verebilmesi kuralı (sınıf öğretmenleri için)
+  if (mode === 'teacher') {
+    // Öğretmenin her gün için her sınıfa kaç farklı ders verdiğini kontrol et
+    const dailyClassSubjects = new Map<string, Map<string, Set<string>>>();
+    
+    DAYS.forEach(day => {
+      dailyClassSubjects.set(day, new Map<string, Set<string>>());
+      
+      PERIODS.forEach(period => {
+        const slot = currentSchedule[day]?.[period];
+        if (slot && slot.classId && slot.subjectId && slot.classId !== 'fixed-period') {
+          const classId = slot.classId;
+          const subjectId = slot.subjectId;
+          
+          if (!dailyClassSubjects.get(day)!.has(classId)) {
+            dailyClassSubjects.get(day)!.set(classId, new Set<string>());
+          }
+          
+          dailyClassSubjects.get(day)!.get(classId)!.add(subjectId);
+        }
+      });
+    });
+    
+    // Her gün için limit kontrolü
+    DAYS.forEach(day => {
+      dailyClassSubjects.get(day)!.forEach((subjects, classId) => {
+        const classItem = classes.find(c => c.id === classId);
+        const isClassTeacher = classItem?.classTeacherId === selectedId;
+        
+        // Sadece sınıf öğretmenleri için kontrol et
+        if (isClassTeacher && subjects.size > 2) {
+          warnings.push(`${day} günü ${classItem?.name || classId} sınıfına en fazla 2 farklı ders verilebilir (şu an: ${subjects.size})`);
+        }
+      });
+    });
+  }
 
   return {
     isValid: errors.length === 0 && constraintViolations.length === 0,

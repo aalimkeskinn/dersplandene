@@ -29,6 +29,12 @@ export function createSubjectTeacherMappings(
     const classItem = allClasses.find(c => c.id === classId);
     if (!classItem || !classItem.assignments || classItem.assignments.length === 0) continue;
 
+    // Sınıf seviyesini al
+    const classLevel = getEntityLevel(classItem);
+    
+    // Sınıf öğretmeni ID'sini al
+    const classTeacherId = classItem.classTeacherId;
+    
     for (const assignment of classItem.assignments) {
       const teacherId = assignment.teacherId;
       const teacher = allTeachers.find(t => t.id === teacherId);
@@ -37,7 +43,6 @@ export function createSubjectTeacherMappings(
       
       // *** YENİ: Seviye uyumluluğunu burada kontrol et ***
       const teacherLevels = new Set(teacher.levels || [teacher.level]);
-      const classLevel = getEntityLevel(classItem);
       if (!teacherLevels.has(classLevel)) {
           errors.push(`UYARI: ${teacher.name} (${[...teacherLevels].join(', ')}) öğretmeni, ${classItem.name} (${classLevel}) sınıfının seviyesiyle uyumsuz. Bu atama yoksayıldı.`);
           continue; // Bu öğretmeni bu sınıf için atla

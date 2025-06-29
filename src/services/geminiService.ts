@@ -194,7 +194,7 @@ ${formattedConstraints.length > 0 ? formattedConstraints.map(c =>
 4. **Sabit Saatler**: Yemek, hazırlık, kahvaltı saatleri değiştirilemez
 5. **Kısıtlama Uyumu**: "unavailable" kısıtlamaları kesinlikle ihlal edilemez
 6. **Yemek Saatleri**: Yemek saatlerinde (İlkokul/Anaokulu: 5. ders, Ortaokul: 6. ders) ders atanamaz
-7. **Günlük Ders Limiti**: Bir öğretmen, bir sınıfa günde en fazla 2 saat ders verebilir
+7. **Günlük Ders Limiti**: Bir öğretmen, bir sınıfa günde en fazla 4 saat ders verebilir (sınıf öğretmenleri için)
 8. **Sınıf Ders Saati**: Her sınıf 45 saatlik ders ile doldurulmalıdır
 
 ### OPTİMİZASYON PRİORİTELERİ:
@@ -217,6 +217,8 @@ ${formattedConstraints.length > 0 ? formattedConstraints.map(c =>
 3. **Dengeli Dağılım**: Sınıf öğretmeninin dersleri haftanın günlerine dengeli dağıtılmalıdır
 4. **Sabah Saatleri**: Sınıf öğretmenlerinin temel dersleri (Türkçe, Matematik) sabah saatlerinde olmalıdır
 5. **Blok Dersler**: Sınıf öğretmenlerinin dersleri mümkünse blok halinde (2 saat) yerleştirilmelidir
+6. **Günlük Limit**: Sınıf öğretmeni bir günde en fazla 4 saat ders verebilir (2 farklı ders, 2'şer saat)
+7. **Tamamlama Önceliği**: Sınıf öğretmeninin dersleri tamamlanmadan diğer dersler yerleştirilmemelidir
 
 ## ÇIKTI FORMATI
 
@@ -248,7 +250,8 @@ Lütfen her öğretmen için aşağıdaki JSON formatında program oluştur:
 4. **Denge**: Öğretmen ve sınıf yükleri dengeli olmalı
 5. **Optimizasyon**: Tercihler ve dağıtım şekilleri dikkate alınmalı
 6. **Sınıf Ders Saati**: Her sınıf 45 saatlik ders ile doldurulmalı
-7. **Günlük Limit**: Bir öğretmen, bir sınıfa günde en fazla 2 saat ders verebilir
+7. **Günlük Limit**: Bir öğretmen, bir sınıfa günde en fazla 4 saat ders verebilir (sınıf öğretmenleri için)
+8. **Sınıf Öğretmeni Önceliği**: Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirilmeli
 
 ## EKSİK DERS ATAMASI DURUMUNDA
 
@@ -510,10 +513,14 @@ Eğer tüm dersleri yerleştiremezsen, eksik kalan dersler için şu bilgileri v
               dailyHoursCounter.set(key, (dailyHoursCounter.get(key) || 0) + 1);
               
               // Günlük limit kontrolü
-              if (dailyHoursCounter.get(key)! > 2) {
+              const classItem = classes.find(c => c.id === slot.classId);
+              const isClassTeacher = classItem?.classTeacherId === teacherId;
+              const maxDailyHours = isClassTeacher ? 4 : 2; // Sınıf öğretmenleri için 4, diğerleri için 2
+              
+              if (dailyHoursCounter.get(key)! > maxDailyHours) {
                 const className = classNames.get(slot.classId) || slot.classId;
                 teacherClassDailyHoursViolations.push(
-                  `${teacher.name} öğretmeni ${day} günü ${className} sınıfına 2'den fazla ders veriyor: ${dailyHoursCounter.get(key)} saat`
+                  `${teacher.name} öğretmeni ${day} günü ${className} sınıfına ${maxDailyHours}'den fazla ders veriyor: ${dailyHoursCounter.get(key)} saat`
                 );
               }
             }
@@ -528,7 +535,7 @@ Eğer tüm dersleri yerleştiremezsen, eksik kalan dersler için şu bilgileri v
         'Çakışmalar önlendi',
         'Kulüp dersleri 2 saatlik bloklar halinde yerleştirildi',
         'Yemek saatlerine ders atanmadı',
-        'Bir öğretmen, bir sınıfa günde en fazla 2 saat ders verecek şekilde planlandı',
+        'Bir öğretmen, bir sınıfa günde en fazla 4 saat ders verecek şekilde planlandı (sınıf öğretmenleri için)',
         'Her sınıf için 45 saatlik ders hedeflendi',
         'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirildi'
       ];
@@ -585,7 +592,7 @@ Lütfen şu konularda öneriler ver:
 3. Eğitimsel optimizasyon
 4. Öğretmen memnuniyeti
 5. Sınıf verimliliği
-6. Bir öğretmenin aynı sınıfa günde en fazla 2 saat ders vermesi kuralına uyum
+6. Bir öğretmenin aynı sınıfa günde en fazla 4 saat ders vermesi kuralına uyum (sınıf öğretmenleri için)
 7. Her sınıfın 45 saatlik ders ile doldurulması hedefine uyum
 8. Sınıf öğretmenlerinin derslerinin önceliklendirilmesi
 
@@ -618,12 +625,13 @@ MEVCUT PROGRAM:
 ${JSON.stringify(currentSchedule, null, 2)}
 
 KURALLAR:
-1. Bir öğretmen, bir sınıfa günde en fazla 2 saat ders verebilir
+1. Bir öğretmen, bir sınıfa günde en fazla 4 saat ders verebilir (sınıf öğretmenleri için)
 2. Her sınıf 45 saatlik ders ile doldurulmalıdır
 3. Kulüp dersleri sabit zaman dilimlerinde verilmelidir (İlkokul: Perşembe 9-10, Ortaokul: Perşembe 7-8)
 4. Yemek saatlerine ders atanamaz (İlkokul/Anaokulu: 5. ders, Ortaokul: 6. ders)
 5. Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirilmelidir (İlkokul ve Anaokulu için)
 6. Temel dersler (Türkçe, Matematik) sabah saatlerinde olmalıdır
+7. Sınıf öğretmeni bir günde en fazla 2 farklı ders verebilir, her birinden 2 saat olmak üzere
 
 Lütfen bu çakışmaları çözmek için spesifik öneriler ver ve yeni program düzenlemesi öner.
 `;
@@ -633,7 +641,7 @@ Lütfen bu çakışmaları çözmek için spesifik öneriler ver ve yeni program
       
       return this.parseGeminiResponse(response.text(), [], [], [], []);
     } catch (error) {
-      console.error('Çakışma çözüm hatası:', error);
+      console.error('AI çakışma çözüm hatası:', error);
       throw error;
     }
   }

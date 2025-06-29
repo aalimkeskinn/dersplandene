@@ -32,13 +32,17 @@ export async function generateAIEnhancedSchedule(
     const enhancedMappings = prepareClubClassesAsBlocks(mappings, allSubjects, allClasses);
     console.log(`✅ Kulüp dersleri blok olarak ayarlandı: ${mappings.length} mapping`);
     
+    // SINIF ÖĞRETMENLERİNİN DERSLERİNİ ÖNCELİKLENDİR
+    const prioritizedMappings = prioritizeClassTeacherMappings(enhancedMappings, allTeachers, allClasses, allSubjects);
+    console.log(`✅ Sınıf öğretmeni dersleri önceliklendirildi`);
+    
     if (useAI) {
       // Gemini AI ile program oluştur
       console.log('🤖 Gemini AI devreye giriyor...');
       
       try {
         const aiResult = await geminiScheduleService.generateOptimalSchedule(
-          enhancedMappings,
+          prioritizedMappings,
           allTeachers,
           allClasses,
           allSubjects,
@@ -53,23 +57,23 @@ export async function generateAIEnhancedSchedule(
           // Eksik ders ataması kontrolü
           if (aiResult.statistics.unassignedLessons.length > 0) {
             console.log('⚠️ AI bazı dersleri atayamadı, hibrit yaklaşım kullanılıyor...');
-            return await generateHybridSchedule(enhancedMappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules, aiResult);
+            return await generateHybridSchedule(prioritizedMappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules, aiResult);
           }
           
           return aiResult;
         } else {
           console.log('⚠️ AI kısmi sonuç verdi, hibrit yaklaşım kullanılıyor...');
-          return await generateHybridSchedule(enhancedMappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules, aiResult);
+          return await generateHybridSchedule(prioritizedMappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules, aiResult);
         }
       } catch (aiError) {
         console.error('❌ AI hatası:', aiError);
         console.log('🔄 Klasik algoritma ile devam ediliyor...');
-        return await generateClassicSchedule(enhancedMappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules);
+        return await generateClassicSchedule(prioritizedMappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules);
       }
     } else {
       // Klasik algoritma ile devam et
       console.log('🔧 Klasik algoritma kullanılıyor...');
-      return await generateClassicSchedule(enhancedMappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules);
+      return await generateClassicSchedule(prioritizedMappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules);
     }
   } catch (error) {
     console.error('❌ Genel hata, fallback algoritma devreye giriyor:', error);
@@ -77,6 +81,62 @@ export async function generateAIEnhancedSchedule(
     // Herhangi bir hata durumunda klasik algoritma ile devam et
     return await generateClassicSchedule(mappings, allTeachers, allClasses, allSubjects, timeConstraints, globalRules);
   }
+}
+
+/**
+ * Sınıf öğretmenlerinin derslerini önceliklendirme
+ */
+function prioritizeClassTeacherMappings(
+  mappings: SubjectTeacherMapping[],
+  allTeachers: Teacher[],
+  allClasses: Class[],
+  allSubjects: Subject[]
+): SubjectTeacherMapping[] {
+  // Sınıf öğretmeni görevlerini ve diğer görevleri ayır
+  const classTeacherMappings: SubjectTeacherMapping[] = [];
+  const otherMappings: SubjectTeacherMapping[] = [];
+  
+  mappings.forEach(mapping => {
+    const classItem = allClasses.find(c => c.id === mapping.classId);
+    const subject = allSubjects.find(s => s.id === mapping.subjectId);
+    
+    if (!classItem || !subject) {
+      otherMappings.push(mapping);
+      return;
+    }
+    
+    // Sınıf öğretmeni görevi mi?
+    const isClassTeacherTask = classItem.classTeacherId === mapping.teacherId;
+    
+    // Temel ders mi? (Türkçe, Matematik, Hayat Bilgisi)
+    const isMainSubject = subject.name.includes('Türkçe') || 
+                          subject.name.includes('Matematik') || 
+                          subject.name.includes('Hayat Bilgisi');
+    
+    // Sınıf seviyesi
+    const classLevel = classItem.level || (classItem.levels && classItem.levels[0]) || 'İlkokul';
+    
+    // Sınıf öğretmeni görevlerini önceliklendir
+    if (isClassTeacherTask && (classLevel === 'İlkokul' || classLevel === 'Anaokulu')) {
+      // Önceliğini yükselt
+      const prioritizedMapping = {
+        ...mapping,
+        priority: 'high' as 'high' | 'medium' | 'low'
+      };
+      
+      // Temel dersler en önce
+      if (isMainSubject) {
+        classTeacherMappings.unshift(prioritizedMapping);
+      } else {
+        classTeacherMappings.push(prioritizedMapping);
+      }
+    } else {
+      otherMappings.push(mapping);
+    }
+  });
+  
+  // Önce sınıf öğretmeni görevleri, sonra diğer görevler
+  return [...classTeacherMappings, ...otherMappings];
 }
 
 /**
@@ -242,10 +302,14 @@ async function generateHybridSchedule(
             dailyHoursCounter.set(key, (dailyHoursCounter.get(key) || 0) + 1);
             
             // Günlük limit kontrolü
-            if (dailyHoursCounter.get(key)! > 2) {
+            const classItem = allClasses.find(c => c.id === slot.classId);
+            const isClassTeacher = classItem?.classTeacherId === teacherId;
+            const maxDailyHours = isClassTeacher ? 4 : 2; // Sınıf öğretmenleri için 4, diğerleri için 2
+            
+            if (dailyHoursCounter.get(key)! > maxDailyHours) {
               const className = classNames.get(slot.classId) || slot.classId;
               teacherClassDailyHoursViolations.push(
-                `${teacher.name} öğretmeni ${day} günü ${className} sınıfına 2'den fazla ders veriyor: ${dailyHoursCounter.get(key)} saat`
+                `${teacher.name} öğretmeni ${day} günü ${className} sınıfına ${maxDailyHours}'den fazla ders veriyor: ${dailyHoursCounter.get(key)} saat`
               );
             }
           }
@@ -276,7 +340,7 @@ async function generateHybridSchedule(
           'AI ve klasik algoritma birlikte kullanıldı',
           'Eksik atamalar tamamlandı',
           'Çakışmalar önlendi',
-          'Bir öğretmen, bir sınıfa günde en fazla 2 saat ders verecek şekilde planlandı',
+          'Bir öğretmen, bir sınıfa günde en fazla 4 saat ders verecek şekilde planlandı (sınıf öğretmenleri için)',
           'Her sınıf için 45 saatlik ders hedeflendi',
           'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirildi'
         ]
@@ -426,7 +490,7 @@ async function generateClassicSchedule(
         'Klasik algoritma kullanıldı',
         'AI kullanılmadı veya başarısız oldu',
         'Temel optimizasyonlar uygulandı',
-        'Bir öğretmen, bir sınıfa günde en fazla 2 saat ders verecek şekilde planlandı',
+        'Bir öğretmen, bir sınıfa günde en fazla 4 saat ders verecek şekilde planlandı (sınıf öğretmenleri için)',
         'Her sınıf için 45 saatlik ders hedeflendi',
         'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirildi'
       ]
@@ -467,7 +531,7 @@ export async function analyzeScheduleWithAI(
         'Matematik dersleri sabah saatlerine kaydırılabilir',
         'Öğretmen yük dağılımı optimize edilebilir',
         'Sınıf geçişleri minimize edilebilir',
-        'Bir öğretmenin aynı sınıfa günde en fazla 2 saat ders vermesi sağlanabilir',
+        'Bir öğretmenin aynı sınıfa günde en fazla 4 saat ders vermesi sağlanabilir (sınıf öğretmenleri için)',
         'Her sınıfın 45 saatlik ders ile doldurulması hedeflenebilir',
         'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirilebilir'
       ]
@@ -503,7 +567,7 @@ export async function resolveConflictsWithAI(
       suggestions: [
         'Çakışmalar AI tarafından çözüldü',
         'Yeni program önerisi hazırlandı',
-        'Bir öğretmenin aynı sınıfa günde en fazla 2 saat ders vermesi sağlandı',
+        'Bir öğretmenin aynı sınıfa günde en fazla 4 saat ders vermesi sağlandı (sınıf öğretmenleri için)',
         'Her sınıfın 45 saatlik ders ile doldurulması hedeflendi',
         'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirildi'
       ]
