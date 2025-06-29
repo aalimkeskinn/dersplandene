@@ -114,7 +114,6 @@ const Teachers = () => {
     const thursdaySlots = teacherSchedule.schedule['Perşembe'] || {};
     
     // İlkokul kulüp saatlerini kontrol et
-    let ilkokulClassCount = 0;
     const ilkokulClassesSet = new Set<string>();
     
     ilkokulClubSlots.forEach(period => {
@@ -132,7 +131,6 @@ const Teachers = () => {
     clubHours += ilkokulClassesSet.size * 2;
     
     // Ortaokul kulüp saatlerini kontrol et
-    let ortaokulClassCount = 0;
     const ortaokulClassesSet = new Set<string>();
     
     ortaokulClubSlots.forEach(period => {
