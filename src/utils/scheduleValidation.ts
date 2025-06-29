@@ -48,6 +48,33 @@ export const checkSlotConflict = (
     schedulesCount: allSchedules.length
   });
 
+  // YENİ: Bir öğretmenin aynı sınıfa günde en fazla 2 saat ders verebilmesi kuralı
+  if (mode === 'teacher') {
+    // Öğretmenin bu gün için bu sınıfa kaç saat ders verdiğini kontrol et
+    const teacherSchedule = allSchedules.find(s => s.teacherId === currentEntityId);
+    if (teacherSchedule) {
+      let dailyHoursForClass = 0;
+      
+      // Bu gün için öğretmenin bu sınıfa verdiği ders saatlerini say
+      Object.entries(teacherSchedule.schedule[sanitizedDay] || {}).forEach(([p, slot]) => {
+        if (slot?.classId === targetId && slot.classId !== 'fixed-period') {
+          dailyHoursForClass++;
+        }
+      });
+      
+      // Eğer öğretmen bu sınıfa bu gün zaten 2 saat ders vermişse, çakışma var
+      if (dailyHoursForClass >= 2) {
+        const teacher = teachers.find(t => t.id === currentEntityId);
+        const classItem = classes.find(c => c.id === targetId);
+        
+        return {
+          hasConflict: true,
+          message: `${teacher?.name || 'Öğretmen'} ${sanitizedDay} günü ${classItem?.name || 'sınıf'} için maksimum ders saatine (2) ulaştı`
+        };
+      }
+    }
+  }
+
   if (mode === 'teacher') {
     // FIXED: Teacher mode - Check if class is already assigned to another teacher at this time
     const conflictingSchedules = allSchedules.filter(schedule => {

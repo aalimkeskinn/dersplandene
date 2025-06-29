@@ -8,12 +8,14 @@ function getEntityLevel(entity: Teacher | Class): 'Anaokulu' | 'İlkokul' | 'Ort
 }
 
 /**
- * "Öncelikli Kısıtlı Görev" Algoritması (v44 - Kulüp Dersi ve Sınıf Saati Düzeltmesi)
+ * "Öncelikli Kısıtlı Görev" Algoritması (v44 - Kulüp Dersleri ve Sınıf Saati Kontrolü)
  * 1. "KULÜP" derslerini sabit zaman dilimlerinde 2 saatlik bloklar halinde yerleştirir
  * 2. "ADE" gibi özel dersleri tespit eder ve kısıtlamalarına göre yerleştirir
  * 3. Yemek saatlerine ders atanmasını engeller
- * 4. Bir öğretmen, bir günlük periyotta aynı sınıfa aynı dersi 2 saatten fazla veremez
- * 5. Her sınıf için 45 saatlik ders yükü hedeflenir
+ * 4. Öğretmenlerin maksimum ders saatini kontrol eder
+ * 5. Bir öğretmenin aynı sınıfa günde en fazla 2 saat ders vermesini sağlar
+ * 6. Her sınıfın 45 saatlik ders ile doldurulmasını hedefler
+ * 7. Ardından kalan normal dersleri, boş kalan slotlara en verimli şekilde dağıtır
  */
 export function generateSystematicSchedule(
   mappings: SubjectTeacherMapping[],
@@ -25,15 +27,17 @@ export function generateSystematicSchedule(
 ): EnhancedGenerationResult {
   
   const startTime = Date.now();
-  console.log('🚀 Program oluşturma başlatıldı (v44 - Kulüp Dersi ve Sınıf Saati Düzeltmesi)...');
+  console.log('🚀 Program oluşturma başlatıldı (v44 - Kulüp Dersleri ve Sınıf Saati Kontrolü)...');
 
   // --- AŞAMA 1: VERİ MATRİSLERİNİ VE GÖREVLERİ HAZIRLA ---
   const classScheduleGrids: { [classId: string]: Schedule['schedule'] } = {};
   const teacherAvailability = new Map<string, Set<string>>();
   const classAvailability = new Map<string, Set<string>>();
   const constraintMap = new Map<string, string>();
+  
+  // YENİ: Öğretmen-sınıf günlük ders saati takibi
+  const teacherClassDailyHours = new Map<string, Map<string, Map<string, number>>>();
 
-  // Öğretmen-seviye hedef saatleri
   const teacherLevelTargets = new Map<string, Map<string, number>>();
   mappings.forEach(m => {
       const classItem = allClasses.find(c => c.id === m.classId);
@@ -44,31 +48,11 @@ export function generateSystematicSchedule(
       levelMap.set(level, (levelMap.get(level) || 0) + m.weeklyHours);
   });
   
-  // Öğretmen-seviye gerçekleşen saatler
   const teacherLevelActualHours = new Map<string, Map<string, number>>();
   teacherLevelTargets.forEach((levelMap, teacherId) => {
       const newLevelMap = new Map<string, number>();
       levelMap.forEach((_, level) => newLevelMap.set(level, 0));
       teacherLevelActualHours.set(teacherId, newLevelMap);
-  });
-
-  // Sınıf toplam ders saati takibi
-  const classWeeklyHours = new Map<string, number>();
-  allClasses.forEach(c => {
-    classWeeklyHours.set(c.id, 0);
-  });
-
-  // Öğretmen-sınıf-gün bazında ders saati takibi (aynı gün aynı sınıfa 2 saatten fazla ders vermemesi için)
-  const teacherClassDayHours = new Map<string, Map<string, Map<string, number>>>();
-  allTeachers.forEach(t => {
-    teacherClassDayHours.set(t.id, new Map<string, Map<string, number>>());
-    allClasses.forEach(c => {
-      const teacherClassMap = teacherClassDayHours.get(t.id)!;
-      teacherClassMap.set(c.id, new Map<string, number>());
-      DAYS.forEach(day => {
-        teacherClassMap.get(c.id)!.set(day, 0);
-      });
-    });
   });
 
   timeConstraints.forEach(c => { if (c.constraintType) constraintMap.set(`${c.entityType}-${c.entityId}-${c.day}-${c.period}`, c.constraintType); });
@@ -99,6 +83,14 @@ export function generateSystematicSchedule(
   const selectedTeacherIds = new Set(mappings.map(m => m.teacherId));
   selectedTeacherIds.forEach(teacherId => { 
     teacherAvailability.set(teacherId, new Set<string>()); 
+    
+    // YENİ: Öğretmen-sınıf günlük ders saati takibi için veri yapısı oluştur
+    teacherClassDailyHours.set(teacherId, new Map<string, Map<string, number>>());
+    DAYS.forEach(day => {
+      if (!teacherClassDailyHours.get(teacherId)!.has(day)) {
+        teacherClassDailyHours.get(teacherId)!.set(day, new Map<string, number>());
+      }
+    });
     
     // ÖĞRETMENLER İÇİN DE YEMEK SAATLERİNİ MEŞGUL OLARAK İŞARETLE
     const teacher = allTeachers.find(t => t.id === teacherId);
@@ -262,13 +254,15 @@ export function generateSystematicSchedule(
         const currentHours = teacherLevelActualHours.get(teacherId)?.get(classLevel) || 0;
         teacherLevelActualHours.get(teacherId)?.set(classLevel, currentHours + 1);
         
-        // Sınıf toplam ders saati sayacını güncelle
-        classWeeklyHours.set(classId, (classWeeklyHours.get(classId) || 0) + 1);
-        
-        // Öğretmen-sınıf-gün bazında ders saati sayacını güncelle
-        const teacherClassMap = teacherClassDayHours.get(teacherId)!;
-        const classMap = teacherClassMap.get(classId)!;
-        classMap.set(slot.day, (classMap.get(slot.day) || 0) + 1);
+        // YENİ: Öğretmen-sınıf günlük ders saati takibini güncelle
+        const day = slot.day;
+        if (!teacherClassDailyHours.get(teacherId)!.get(day)!.has(classId)) {
+          teacherClassDailyHours.get(teacherId)!.get(day)!.set(classId, 0);
+        }
+        teacherClassDailyHours.get(teacherId)!.get(day)!.set(
+          classId, 
+          (teacherClassDailyHours.get(teacherId)!.get(day)!.get(classId) || 0) + 1
+        );
       }
       
       task.isPlaced = true;
@@ -318,20 +312,11 @@ export function generateSystematicSchedule(
                           !classAvailability.get(classId)?.has(slotKey) && 
                           !isTeacherUnavailable;
       
-      // Öğretmenin aynı gün aynı sınıfa 2 saatten fazla ders vermemesi için kontrol
-      const teacherClassDayHour = teacherClassDayHours.get(teacherId)?.get(classId)?.get(slot.day) || 0;
-      if (teacherClassDayHour >= 2) {
-        continue; // Bu gün bu sınıfa zaten 2 saat ders vermiş, atla
-      }
+      // YENİ: Öğretmenin bu sınıfa bu gün için ders saati limitini kontrol et
+      const teacherDailyHoursForClass = teacherClassDailyHours.get(teacherId)?.get(slot.day)?.get(classId) || 0;
+      const isTeacherClassDailyLimitReached = teacherDailyHoursForClass >= 2;
       
-      // Sınıfın toplam ders saati 45'i geçmemeli
-      const classCurrentHours = classWeeklyHours.get(classId) || 0;
-      if (classCurrentHours >= 45) {
-        console.log(`⚠️ ${classItem.name} sınıfı 45 saatlik ders yüküne ulaştı, daha fazla ders eklenemiyor.`);
-        break;
-      }
-      
-      if (isAvailable) {
+      if (isAvailable && !isTeacherClassDailyLimitReached) {
         classScheduleGrids[classId][slot.day][slot.period] = { 
           subjectId, 
           teacherId, 
@@ -345,13 +330,14 @@ export function generateSystematicSchedule(
         const currentHours = teacherLevelActualHours.get(teacherId)?.get(classLevel) || 0;
         teacherLevelActualHours.get(teacherId)?.set(classLevel, currentHours + 1);
         
-        // Sınıf toplam ders saati sayacını güncelle
-        classWeeklyHours.set(classId, (classWeeklyHours.get(classId) || 0) + 1);
-        
-        // Öğretmen-sınıf-gün bazında ders saati sayacını güncelle
-        const teacherClassMap = teacherClassDayHours.get(teacherId)!;
-        const classMap = teacherClassMap.get(classId)!;
-        classMap.set(slot.day, (classMap.get(slot.day) || 0) + 1);
+        // YENİ: Öğretmen-sınıf günlük ders saati takibini güncelle
+        if (!teacherClassDailyHours.get(teacherId)!.get(slot.day)!.has(classId)) {
+          teacherClassDailyHours.get(teacherId)!.get(slot.day)!.set(classId, 0);
+        }
+        teacherClassDailyHours.get(teacherId)!.get(slot.day)!.set(
+          classId, 
+          (teacherClassDailyHours.get(teacherId)!.get(slot.day)!.get(classId) || 0) + 1
+        );
         
         placed = true;
         task.isPlaced = true;
@@ -385,6 +371,16 @@ export function generateSystematicSchedule(
         continue;
     }
 
+    // DÜZELTME: Öğretmenin maksimum ders saati kontrolü
+    const currentTeacherTotalHours = Array.from(teacherLevelActualHours.get(teacherId)?.values() || []).reduce((sum, hours) => sum + hours, 0);
+    const teacherMaxHours = globalRules.teacherMaxHours?.[teacherId] || 30; // Varsayılan maksimum 30 saat
+    
+    if (currentTeacherTotalHours + blockLength > teacherMaxHours) {
+      console.warn(`UYARI: ${teacher.name} öğretmeni maksimum ders saatine (${teacherMaxHours}) ulaştı. Şu anki: ${currentTeacherTotalHours}, Eklenecek: ${blockLength}`);
+      taskToAttempt.isPlaced = false;
+      continue;
+    }
+
     const currentTeacherLevelHours = teacherLevelActualHours.get(teacherId)?.get(classLevel) || 0;
     const targetTeacherLevelHours = teacherLevelTargets.get(teacherId)?.get(classLevel) || 0;
     
@@ -392,118 +388,98 @@ export function generateSystematicSchedule(
       taskToAttempt.isPlaced = false;
       continue;
     }
-    
-    // Sınıfın toplam ders saati 45'i geçmemeli
-    const classCurrentHours = classWeeklyHours.get(classId) || 0;
-    if (classCurrentHours + blockLength > 45) {
-      console.log(`⚠️ ${classItem.name} sınıfı 45 saatlik ders yüküne ulaşacak, bu görev atlanamaz.`);
-      taskToAttempt.isPlaced = false;
-      continue;
-    }
 
     let placed = false;
     for (const day of [...DAYS].sort(() => Math.random() - 0.5)) {
-        // Öğretmenin aynı gün aynı sınıfa 2 saatten fazla ders vermemesi için kontrol
-        const teacherClassDayHour = teacherClassDayHours.get(teacherId)?.get(classId)?.get(day) || 0;
-        if (teacherClassDayHour >= 2) {
-          continue; // Bu gün bu sınıfa zaten 2 saat ders vermiş, atla
+        // YENİ: Öğretmenin bu sınıfa bu gün için ders saati limitini kontrol et
+        const teacherDailyHoursForClass = teacherClassDailyHours.get(teacherId)?.get(day)?.get(classId) || 0;
+        if (teacherDailyHoursForClass >= 2) {
+            // Bu öğretmen bu sınıfa bu gün için maksimum ders saatine ulaşmış
+            continue;
         }
         
-        // Eğer blok uzunluğu 2 ise ve öğretmen bu gün bu sınıfa hiç ders vermemişse, blok olarak yerleştir
-        if (blockLength === 2 && teacherClassDayHour === 0) {
-          for (let i = 0; i <= PERIODS.length - blockLength; i++) {
-              let isAvailable = true;
-              for (let j = 0; j < blockLength; j++) {
-                  const period = PERIODS[i+j];
-                  const slotKey = `${day}-${period}`;
-                  
-                  // YEMEK SAATLERİNİ KONTROL ET
-                  const lunchPeriod = classLevel === 'Ortaokul' ? '6' : '5';
-                  if (period === lunchPeriod) {
-                      isAvailable = false;
-                      break;
-                  }
-                  
-                  if (teacherAvailability.get(teacherId)?.has(slotKey) || 
-                      classAvailability.get(classId)?.has(slotKey) || 
-                      constraintMap.get(`subject-${subjectId}-${day}-${period}`) === 'unavailable' || 
-                      constraintMap.get(`teacher-${teacherId}-${day}-${period}`) === 'unavailable' || 
-                      constraintMap.get(`class-${classId}-${day}-${period}`) === 'unavailable') {
-                      isAvailable = false;
-                      break;
-                  }
-              }
-              if (isAvailable) {
-                  for (let j = 0; j < blockLength; j++) {
-                      const period = PERIODS[i + j];
-                      const slotKey = `${day}-${period}`;
-                      classScheduleGrids[classId][day][period] = { subjectId, teacherId, classId, isFixed: false };
-                      teacherAvailability.get(teacherId)!.add(slotKey);
-                      classAvailability.get(classId)!.add(slotKey);
-                  }
-                  teacherLevelActualHours.get(teacherId)?.set(classLevel, currentTeacherLevelHours + blockLength);
-                  
-                  // Sınıf toplam ders saati sayacını güncelle
-                  classWeeklyHours.set(classId, (classWeeklyHours.get(classId) || 0) + blockLength);
-                  
-                  // Öğretmen-sınıf-gün bazında ders saati sayacını güncelle
-                  const teacherClassMap = teacherClassDayHours.get(teacherId)!;
-                  const classMap = teacherClassMap.get(classId)!;
-                  classMap.set(day, (classMap.get(day) || 0) + blockLength);
-                  
-                  placed = true;
-                  taskToAttempt.isPlaced = true;
-                  break;
-              }
-          }
-        } else {
-          // Tek saatlik dersler veya blok yerleştirilemeyen dersler için
-          for (let i = 0; i < PERIODS.length; i++) {
-              const period = PERIODS[i];
-              const slotKey = `${day}-${period}`;
-              
-              // YEMEK SAATLERİNİ KONTROL ET
-              const lunchPeriod = classLevel === 'Ortaokul' ? '6' : '5';
-              if (period === lunchPeriod) {
-                  continue;
-              }
-              
-              const isAvailable = !teacherAvailability.get(teacherId)?.has(slotKey) && 
-                                 !classAvailability.get(classId)?.has(slotKey) && 
-                                 constraintMap.get(`subject-${subjectId}-${day}-${period}`) !== 'unavailable' && 
-                                 constraintMap.get(`teacher-${teacherId}-${day}-${period}`) !== 'unavailable' && 
-                                 constraintMap.get(`class-${classId}-${day}-${period}`) !== 'unavailable';
-              
-              if (isAvailable) {
-                  classScheduleGrids[classId][day][period] = { subjectId, teacherId, classId, isFixed: false };
-                  teacherAvailability.get(teacherId)!.add(slotKey);
-                  classAvailability.get(classId)!.add(slotKey);
-                  teacherLevelActualHours.get(teacherId)?.set(classLevel, currentTeacherLevelHours + 1);
-                  
-                  // Sınıf toplam ders saati sayacını güncelle
-                  classWeeklyHours.set(classId, (classWeeklyHours.get(classId) || 0) + 1);
-                  
-                  // Öğretmen-sınıf-gün bazında ders saati sayacını güncelle
-                  const teacherClassMap = teacherClassDayHours.get(teacherId)!;
-                  const classMap = teacherClassMap.get(classId)!;
-                  classMap.set(day, (classMap.get(day) || 0) + 1);
-                  
-                  placed = true;
-                  
-                  // Blok ders için kalan saatleri yerleştir
-                  if (blockLength > 1) {
-                    taskToAttempt.isPlaced = false;
-                    tasksToPlace.push({ 
-                      ...taskToAttempt, 
-                      blockLength: blockLength - 1, 
-                      taskId: `${taskToAttempt.taskId}-remaining` 
-                    });
-                  } else {
-                    taskToAttempt.isPlaced = true;
-                  }
-                  break;
-              }
-          }
+        // YENİ: Sınıfın toplam ders saati kontrolü (45 saat limiti)
+        let classWeeklyHours = 0;
+        DAYS.forEach(d => {
+            PERIODS.forEach(p => {
+                if (classScheduleGrids[classId][d][p] && !classScheduleGrids[classId][d][p].isFixed) {
+                    classWeeklyHours++;
+                }
+            });
+        });
+        
+        if (classWeeklyHours >= 45) {
+            console.warn(`UYARI: ${classItem.name} sınıfı maksimum haftalık ders saatine (45) ulaştı.`);
+            taskToAttempt.isPlaced = false;
+            break;
+        }
+        
+        // Eğer öğretmen bu sınıfa bu gün için 1 saat ders verebiliyorsa ve blok 2 saatse,
+        // bloğu böl ve 1 saatlik olarak yerleştir
+        if (teacherDailyHoursForClass === 1 && blockLength > 1) {
+            // Bloğu böl
+            tasksToPlace.push({ 
+                ...taskToAttempt,
+                blockLength: 1,
+                taskId: `${taskToAttempt.taskId}-split-daily-limit`
+            });
+            
+            // Mevcut görevi atla
+            taskToAttempt.isPlaced = false;
+            break;
+        }
+        
+        for (let i = 0; i <= PERIODS.length - blockLength; i++) {
+            let isAvailable = true;
+            for (let j = 0; j < blockLength; j++) {
+                const period = PERIODS[i+j];
+                const slotKey = `${day}-${period}`;
+                
+                // YEMEK SAATLERİNİ KONTROL ET
+                const lunchPeriod = classLevel === 'Ortaokul' ? '6' : '5';
+                if (period === lunchPeriod) {
+                    isAvailable = false;
+                    break;
+                }
+                
+                if (teacherAvailability.get(teacherId)?.has(slotKey) || 
+                    classAvailability.get(classId)?.has(slotKey) || 
+                    constraintMap.get(`subject-${subjectId}-${day}-${period}`) === 'unavailable' || 
+                    constraintMap.get(`teacher-${teacherId}-${day}-${period}`) === 'unavailable' || 
+                    constraintMap.get(`class-${classId}-${day}-${period}`) === 'unavailable') {
+                    isAvailable = false;
+                    break;
+                }
+            }
+            
+            // YENİ: Öğretmenin bu sınıfa bu gün için ders saati limitini kontrol et
+            const remainingDailyHours = 2 - teacherDailyHoursForClass;
+            if (blockLength > remainingDailyHours) {
+                isAvailable = false;
+            }
+            
+            if (isAvailable) {
+                for (let j = 0; j < blockLength; j++) {
+                    const period = PERIODS[i + j];
+                    const slotKey = `${day}-${period}`;
+                    classScheduleGrids[classId][day][period] = { subjectId, teacherId, classId, isFixed: false };
+                    teacherAvailability.get(teacherId)!.add(slotKey);
+                    classAvailability.get(classId)!.add(slotKey);
+                    
+                    // YENİ: Öğretmen-sınıf günlük ders saati takibini güncelle
+                    if (!teacherClassDailyHours.get(teacherId)!.get(day)!.has(classId)) {
+                        teacherClassDailyHours.get(teacherId)!.get(day)!.set(classId, 0);
+                    }
+                    teacherClassDailyHours.get(teacherId)!.get(day)!.set(
+                        classId, 
+                        (teacherClassDailyHours.get(teacherId)!.get(day)!.get(classId) || 0) + 1
+                    );
+                }
+                teacherLevelActualHours.get(teacherId)?.set(classLevel, currentTeacherLevelHours + blockLength);
+                placed = true;
+                taskToAttempt.isPlaced = true;
+                break;
+            }
         }
         if (placed) break;
     }
@@ -616,20 +592,25 @@ export function generateSystematicSchedule(
     });
   }
 
-  // Sınıf ders saati hedeflerini kontrol et
-  const classHourWarnings: string[] = [];
-  classWeeklyHours.forEach((hours, classId) => {
+  const warnings: string[] = [];
+  if (placedLessons < totalLessonsToPlace) { warnings.push("Tüm ders saatleri yerleştirilemedi. Kısıtlamalar ve yoğun programlar nedeniyle bazı dersler boşta kalmış olabilir."); }
+  
+  // YENİ: Sınıfların 45 saatlik ders limiti kontrolü
+  selectedClassIds.forEach(classId => {
+    let classWeeklyHours = 0;
+    DAYS.forEach(day => {
+      PERIODS.forEach(period => {
+        if (classScheduleGrids[classId][day][period] && !classScheduleGrids[classId][day][period].isFixed) {
+          classWeeklyHours++;
+        }
+      });
+    });
+    
     const classItem = allClasses.find(c => c.id === classId);
-    if (classItem && hours < 45) {
-      classHourWarnings.push(`${classItem.name} sınıfı için hedeflenen 45 saat yerine ${hours} saat ders atanabildi.`);
+    if (classWeeklyHours < 45) {
+      warnings.push(`${classItem?.name || classId} sınıfı için haftalık ders saati 45'in altında: ${classWeeklyHours} saat`);
     }
   });
-
-  const warnings: string[] = [];
-  if (placedLessons < totalLessonsToPlace) { 
-    warnings.push("Tüm ders saatleri yerleştirilemedi. Kısıtlamalar ve yoğun programlar nedeniyle bazı dersler boşta kalmış olabilir."); 
-  }
-  warnings.push(...classHourWarnings);
   
   console.log(`✅ Program oluşturma tamamlandı. Süre: ${(Date.now() - startTime) / 1000} saniye. Sonuç: ${placedLessons} / ${totalLessonsToPlace}`);
   
