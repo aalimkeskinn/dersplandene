@@ -52,6 +52,7 @@ export interface WizardData {
       preferBlockScheduling?: boolean; // YENİ: Blok ders yerleştirmeyi tercih et
       enforceDistributionPatterns?: boolean; // YENİ: Dağıtım şekillerine kesinlikle uy
       maximumBlockSize?: number; // YENİ: Maksimum blok boyutu
+      teacherMaxHours?: { [teacherId: string]: number }; // YENİ: Öğretmen başına maksimum ders saati
     };
   };
   generationSettings: {
