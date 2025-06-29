@@ -3,7 +3,7 @@ import { SubjectTeacherMapping, EnhancedGenerationResult, WizardData } from '../
 import { TimeConstraint } from '../types/constraints';
 import { geminiScheduleService } from '../services/geminiService';
 import { generateSystematicSchedule } from './scheduleGeneration';
-import { applyFixedClubConstraints } from './fixedConstraints';
+import { applyFixedClubConstraints, apply8ABClassADEConstraints } from './fixedConstraints';
 
 /**
  * AI Destekli Gelişmiş Program Oluşturma Sistemi
@@ -25,8 +25,12 @@ export async function generateAIEnhancedSchedule(
 
   try {
     // KULÜP DERSLERİ İÇİN SABİT KISITLAMALARI UYGULA
-    const enhancedConstraints = applyFixedClubConstraints(allSubjects, timeConstraints);
-    console.log(`✅ Sabit kısıtlamalar uygulandı: ${enhancedConstraints.length} kısıtlama (önceki: ${timeConstraints.length})`);
+    let enhancedConstraints = applyFixedClubConstraints(allSubjects, timeConstraints);
+    console.log(`✅ Kulüp dersleri için sabit kısıtlamalar uygulandı: ${enhancedConstraints.length} kısıtlama (önceki: ${timeConstraints.length})`);
+    
+    // 8A VE 8B SINIFLARI İÇİN ADE DERSLERİ KISITLAMALARINI UYGULA
+    enhancedConstraints = apply8ABClassADEConstraints(allClasses, allSubjects, enhancedConstraints);
+    console.log(`✅ 8A ve 8B sınıfları için ADE dersleri kısıtlamaları uygulandı: ${enhancedConstraints.length} kısıtlama`);
     
     // KULÜP DERSLERİ İÇİN HAFTALIK SAAT DÜZELTMESİ
     // Kulüp derslerinin haftalık saatini 2 olarak ayarla
@@ -42,6 +46,20 @@ export async function generateAIEnhancedSchedule(
             ...mapping,
             weeklyHours: 2 // Haftalık saati 2 olarak ayarla
           };
+        }
+      }
+      
+      // ADE dersleri için haftalık saat düzeltmesi
+      if (subject && subject.name.toUpperCase().includes('ADE') && classItem) {
+        // 8A ve 8B sınıfları için ADE dersleri 4 saat olmalı
+        if (classItem.name === '8A' || classItem.name === '8B') {
+          if (mapping.weeklyHours !== 4) {
+            console.log(`⚠️ ADE dersi saati düzeltiliyor: ${subject.name} (${classItem.name}) - ${mapping.weeklyHours} → 4 saat`);
+            return {
+              ...mapping,
+              weeklyHours: 4 // Haftalık saati 4 olarak ayarla
+            };
+          }
         }
       }
       
