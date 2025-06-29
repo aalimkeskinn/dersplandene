@@ -52,7 +52,7 @@ export function createSubjectTeacherMappings(
       }
 
       // Bu öğretmen sınıf öğretmeni mi?
-      const isClassTeacher = classItem.classTeacherId === teacherId;
+      const isClassTeacherTask = classItem.classTeacherId === teacherId;
 
       for (const subjectId of assignment.subjectIds) {
         if (!selectedSubjectIds.has(subjectId)) continue;
@@ -64,11 +64,6 @@ export function createSubjectTeacherMappings(
         if (!mappingExists) {
           const weeklyHours = subject.weeklyHours;
           const distribution = subject.distributionPattern ? parseDistributionPattern(subject.distributionPattern) : undefined;
-
-          // Temel ders mi kontrol et (Türkçe, Matematik, Hayat Bilgisi)
-          const isMainSubject = subject.name.includes('Türkçe') || 
-                                subject.name.includes('Matematik') || 
-                                subject.name.includes('Hayat Bilgisi');
 
           // YENİ: Öğretmenin toplam ders saatini takip et
           if (!teacherAssignedHours.has(teacherId)) {
@@ -84,6 +79,11 @@ export function createSubjectTeacherMappings(
             errors.push(`UYARI: ${teacher.name} öğretmeninin toplam ders saati (${teacherTotalHours}) maksimum limiti (${teacherMaxHours}) aşıyor!`);
           }
 
+          // Temel ders mi kontrol et (Türkçe, Matematik, Hayat Bilgisi)
+          const isMainSubject = subject.name.includes('Türkçe') || 
+                                subject.name.includes('Matematik') || 
+                                subject.name.includes('Hayat Bilgisi');
+
           const task: SubjectTeacherMapping = {
             id: `${classId}-${subjectId}`, 
             classId, 
@@ -92,7 +92,7 @@ export function createSubjectTeacherMappings(
             weeklyHours,
             assignedHours: 0, 
             distribution, 
-            priority: isClassTeacher ? 'high' : isMainSubject ? 'high' : 'medium', // Sınıf öğretmenlerine ve temel derslere yüksek öncelik
+            priority: isClassTeacherTask ? 'high' : isMainSubject ? 'high' : 'medium', // Sınıf öğretmenlerine ve temel derslere yüksek öncelik
           };
 
           if (distribution && distribution.reduce((a, b) => a + b, 0) !== weeklyHours) {
@@ -101,7 +101,7 @@ export function createSubjectTeacherMappings(
           }
           
           // Sınıf öğretmeni görevlerini ayrı bir diziye ekle
-          if (isClassTeacher && (classLevel === 'İlkokul' || classLevel === 'Anaokulu')) {
+          if (isClassTeacherTask && (classLevel === 'İlkokul' || classLevel === 'Anaokulu')) {
             classTeacherMappings.push(task);
           } else {
             regularMappings.push(task);

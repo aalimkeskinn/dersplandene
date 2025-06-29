@@ -1,5 +1,3 @@
-// --- START OF FILE src/utils/csvParser.ts ---
-
 import { Teacher, Class, Subject } from '../types';
 
 export interface ParsedCSVData {
@@ -30,6 +28,11 @@ export const parseComprehensiveCSV = (csvContent: string): ParsedCSVData => {
   const teacherTotalHours = new Map<string, number>();
 
   const lines = csvContent.split('\n').filter(line => line.trim() && !line.startsWith(';'));
+  
+  // İlk satırı başlık olarak kabul et
+  const headers = lines[0].split(';').map(h => h.trim().toLowerCase());
+  const hasDistributionPattern = headers.some(h => h.includes('dağıtım'));
+  
   const dataLines = lines.slice(1);
 
   dataLines.forEach((line, index) => {
@@ -127,5 +130,3 @@ export const parseComprehensiveCSV = (csvContent: string): ParsedCSVData => {
 
   return { teachers, classes, subjects, classSubjectTeacherLinks, errors };
 };
-
-// --- END OF FILE src/utils/csvParser.ts ---

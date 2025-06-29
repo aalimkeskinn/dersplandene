@@ -8,7 +8,7 @@ function getEntityLevel(entity: Teacher | Class): 'Anaokulu' | 'İlkokul' | 'Ort
 }
 
 /**
- * "Öncelikli Kısıtlı Görev" Algoritması (v46 - Sınıf Öğretmeni Önceliği Geliştirilmiş)
+ * "Öncelikli Kısıtlı Görev" Algoritması (v47 - Sınıf Öğretmeni Önceliği ve Dağıtım Şekli İyileştirilmiş)
  * 1. Sınıf öğretmenlerinin derslerini öncelikli olarak yerleştirir (İlkokul ve Anaokulu için)
  * 2. Sınıf öğretmenlerinin dersleri tamamlanmadan diğer dersler yerleştirilmez
  * 3. Bir gün içinde sınıf öğretmeni 4 saate kadar ders verebilir (2 farklı ders, 2'şer saat)
@@ -18,6 +18,8 @@ function getEntityLevel(entity: Teacher | Class): 'Anaokulu' | 'İlkokul' | 'Ort
  * 7. Bir öğretmenin aynı sınıfa günde en fazla 4 saat ders vermesini sağlar (sınıf öğretmenleri için)
  * 8. Her sınıfın 45 saatlik ders ile doldurulmasını hedefler
  * 9. Ardından kalan normal dersleri, boş kalan slotlara en verimli şekilde dağıtır
+ * 10. Öğretmenlerin haftalık ders saati limitlerini dikkate alır
+ * 11. Derslerin dağıtım şekillerini (2+2+2 gibi) dikkate alır
  */
 export function generateSystematicSchedule(
   mappings: SubjectTeacherMapping[],
@@ -29,7 +31,7 @@ export function generateSystematicSchedule(
 ): EnhancedGenerationResult {
   
   const startTime = Date.now();
-  console.log('🚀 Program oluşturma başlatıldı (v46 - Sınıf Öğretmeni Önceliği Geliştirilmiş)...');
+  console.log('🚀 Program oluşturma başlatıldı (v47 - Sınıf Öğretmeni Önceliği ve Dağıtım Şekli İyileştirilmiş)...');
 
   // --- AŞAMA 1: VERİ MATRİSLERİNİ VE GÖREVLERİ HAZIRLA ---
   const classScheduleGrids: { [classId: string]: Schedule['schedule'] } = {};
@@ -128,6 +130,7 @@ export function generateSystematicSchedule(
     isClassTeacherTask?: boolean; // YENİ: Sınıf öğretmeni görevi mi?
     isMainSubject?: boolean; // YENİ: Temel ders mi? (Türkçe, Matematik)
     fixedSlots?: {day: string, period: string}[];
+    distributionDay?: number; // YENİ: Dağıtım şekli için gün indeksi
   };
   
   let specialTasks: PlacementTask[] = [];
@@ -211,9 +214,6 @@ export function generateSystematicSchedule(
     }
     // Sınıf öğretmeni görevleri
     else if (isClassTeacherTask && (classLevel === 'İlkokul' || classLevel === 'Anaokulu')) {
-      // Sınıf öğretmeni görevlerini 2 saatlik bloklara böl
-      let hoursLeft = mapping.weeklyHours;
-      
       // Eğer dağıtım şekli belirtilmişse, ona göre yerleştir
       if (distribution.length > 0 && globalRules.useDistributionPatterns) {
         distribution.forEach((block, index) => {
@@ -225,12 +225,13 @@ export function generateSystematicSchedule(
             isPlaced: false,
             isSpecial: false,
             isClassTeacherTask: true,
-            isMainSubject
+            isMainSubject,
+            distributionDay: index // YENİ: Dağıtım şekli için gün indeksi
           });
-          hoursLeft -= block;
         });
       } else {
         // Dağıtım şekli belirtilmemişse, 2 saatlik bloklara böl
+        let hoursLeft = mapping.weeklyHours;
         while (hoursLeft >= 2) {
           classTeacherTasks.push({ 
             mapping, 
@@ -244,20 +245,20 @@ export function generateSystematicSchedule(
           });
           hoursLeft -= 2;
         }
-      }
-      
-      // Kalan tek saatleri ekle
-      for (let i = 0; i < hoursLeft; i++) {
-        classTeacherTasks.push({ 
-          mapping, 
-          blockLength: 1, 
-          taskId: `${mapping.id}-class-teacher-single-${i}`, 
-          classLevel, 
-          isPlaced: false,
-          isSpecial: false,
-          isClassTeacherTask: true,
-          isMainSubject
-        });
+        
+        // Kalan tek saatleri ekle
+        for (let i = 0; i < hoursLeft; i++) {
+          classTeacherTasks.push({ 
+            mapping, 
+            blockLength: 1, 
+            taskId: `${mapping.id}-class-teacher-single-${i}`, 
+            classLevel, 
+            isPlaced: false,
+            isSpecial: false,
+            isClassTeacherTask: true,
+            isMainSubject
+          });
+        }
       }
     }
     // Normal dersler
@@ -273,7 +274,8 @@ export function generateSystematicSchedule(
             isPlaced: false,
             isSpecial: false,
             isClassTeacherTask,
-            isMainSubject
+            isMainSubject,
+            distributionDay: index // YENİ: Dağıtım şekli için gün indeksi
           });
           hoursLeft -= block;
         });
@@ -417,6 +419,19 @@ export function generateSystematicSchedule(
         continue;
       }
       
+      // YENİ: Öğretmenin toplam ders saati limitini kontrol et
+      const teacher = allTeachers.find(t => t.id === teacherId);
+      if (teacher) {
+        const currentTeacherTotalHours = Array.from(teacherLevelActualHours.get(teacherId)?.values() || []).reduce((sum, hours) => sum + hours, 0);
+        const teacherMaxHours = teacher.totalWeeklyHours || 45; // Öğretmenin belirtilen maksimum saati veya varsayılan 45
+        
+        if (currentTeacherTotalHours + 1 > teacherMaxHours) {
+          console.warn(`UYARI: ${teacher.name} öğretmeni maksimum ders saatine (${teacherMaxHours}) ulaştı. Şu anki: ${currentTeacherTotalHours}, Eklenecek: 1`);
+          task.isPlaced = false;
+          break;
+        }
+      }
+      
       if (isAvailable) {
         classScheduleGrids[classId][slot.day][slot.period] = { 
           subjectId, 
@@ -473,7 +488,7 @@ export function generateSystematicSchedule(
   
   // Sınıf öğretmeni görevlerini yerleştir
   for (const task of classTeacherTasks) {
-    const { mapping, blockLength, classLevel, isMainSubject } = task;
+    const { mapping, blockLength, classLevel, isMainSubject, distributionDay } = task;
     const { teacherId, classId, subjectId } = mapping;
     
     const teacher = allTeachers.find(t => t.id === teacherId)!;
@@ -497,14 +512,22 @@ export function generateSystematicSchedule(
     
     let placed = false;
     
-    // Günleri dengeli dağıtmak için, önce az ders olan günleri dene
-    const daysByTeacherLoad = [...DAYS].sort((a, b) => {
-      const aLoad = teacherClassDailyHours.get(teacherId)?.get(a)?.get(classId) || 0;
-      const bLoad = teacherClassDailyHours.get(teacherId)?.get(b)?.get(classId) || 0;
-      return aLoad - bLoad;
-    });
+    // YENİ: Dağıtım şekli için belirli bir gün belirtilmişse, o günü önceliklendir
+    let daysByPriority = [...DAYS];
+    if (distributionDay !== undefined && distributionDay >= 0 && distributionDay < DAYS.length) {
+      // Belirtilen günü en başa al
+      const specificDay = DAYS[distributionDay];
+      daysByPriority = [specificDay, ...DAYS.filter(d => d !== specificDay)];
+    } else {
+      // Günleri dengeli dağıtmak için, önce az ders olan günleri dene
+      daysByPriority = [...DAYS].sort((a, b) => {
+        const aLoad = teacherClassDailyHours.get(teacherId)?.get(a)?.get(classId) || 0;
+        const bLoad = teacherClassDailyHours.get(teacherId)?.get(b)?.get(classId) || 0;
+        return aLoad - bLoad;
+      });
+    }
     
-    for (const day of daysByTeacherLoad) {
+    for (const day of daysByPriority) {
       // YENİ: Öğretmenin bu sınıfa bu gün için ders saati limitini kontrol et
       const teacherDailyHoursForClass = teacherClassDailyHours.get(teacherId)?.get(day)?.get(classId) || 0;
       const maxDailyHours = 4; // Sınıf öğretmenleri için 4 saat limit
@@ -696,7 +719,7 @@ export function generateSystematicSchedule(
     const taskToAttempt = tasksToPlace.shift();
     if (!taskToAttempt) break;
 
-    const { mapping, blockLength, classLevel } = taskToAttempt;
+    const { mapping, blockLength, classLevel, distributionDay } = taskToAttempt;
     const { teacherId, classId, subjectId } = mapping;
 
     const teacher = allTeachers.find(t => t.id === teacherId)!;
@@ -707,7 +730,7 @@ export function generateSystematicSchedule(
         continue;
     }
 
-    // DÜZELTME: Öğretmenin maksimum ders saati kontrolü
+    // YENİ: Öğretmenin toplam ders saati limitini kontrol et
     const currentTeacherTotalHours = Array.from(teacherLevelActualHours.get(teacherId)?.values() || []).reduce((sum, hours) => sum + hours, 0);
     
     // YENİ: Öğretmenin totalWeeklyHours değerini kontrol et (varsa)
@@ -729,14 +752,22 @@ export function generateSystematicSchedule(
 
     let placed = false;
     
-    // Günleri dengeli dağıtmak için, önce az ders olan günleri dene
-    const daysByTeacherLoad = [...DAYS].sort((a, b) => {
-      const aLoad = teacherClassDailyHours.get(teacherId)?.get(a)?.get(classId) || 0;
-      const bLoad = teacherClassDailyHours.get(teacherId)?.get(b)?.get(classId) || 0;
-      return aLoad - bLoad;
-    });
+    // YENİ: Dağıtım şekli için belirli bir gün belirtilmişse, o günü önceliklendir
+    let daysByPriority = [...DAYS];
+    if (distributionDay !== undefined && distributionDay >= 0 && distributionDay < DAYS.length) {
+      // Belirtilen günü en başa al
+      const specificDay = DAYS[distributionDay];
+      daysByPriority = [specificDay, ...DAYS.filter(d => d !== specificDay)];
+    } else {
+      // Günleri dengeli dağıtmak için, önce az ders olan günleri dene
+      daysByPriority = [...DAYS].sort((a, b) => {
+        const aLoad = teacherClassDailyHours.get(teacherId)?.get(a)?.get(classId) || 0;
+        const bLoad = teacherClassDailyHours.get(teacherId)?.get(b)?.get(classId) || 0;
+        return aLoad - bLoad;
+      });
+    }
     
-    for (const day of daysByTeacherLoad) {
+    for (const day of daysByPriority) {
         // YENİ: Öğretmenin bu sınıfa bu gün için ders saati limitini kontrol et
         const teacherDailyHoursForClass = teacherClassDailyHours.get(teacherId)?.get(day)?.get(classId) || 0;
         const maxDailyHours = taskToAttempt.isClassTeacherTask ? 4 : 2; // Sınıf öğretmenleri için 4, diğerleri için 2
