@@ -211,6 +211,7 @@ const WizardStepConstraints: React.FC<WizardStepConstraintsProps> = ({
               <li><strong>İlkokul Kulüp Dersleri:</strong> Perşembe günü 9-10. ders saatlerinde sabit olarak yapılır (2 saatlik blok).</li>
               <li><strong>Ortaokul Kulüp Dersleri:</strong> Perşembe günü 7-8. ders saatlerinde sabit olarak yapılır (2 saatlik blok).</li>
               <li><strong>ADE Dersleri (Ortaokul):</strong> Salı günü 4-5 ve 7-8. ders saatlerinde yapılır.</li>
+              <li><strong>Yemek Saatleri:</strong> İlkokul/Anaokulu için 5. ders, Ortaokul için 6. ders saatlerinde yemek molası vardır ve bu saatlere ders atanamaz.</li>
             </ul>
           </div>
         </div>

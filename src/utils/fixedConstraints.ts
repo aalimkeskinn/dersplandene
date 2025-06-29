@@ -1,3 +1,4 @@
+import { Subject, DAYS, PERIODS } from '../types';
 import { TimeConstraint } from '../types/constraints';
 
 /**
@@ -77,6 +78,8 @@ export function applyFixedClubConstraints(
     s.name.toUpperCase().includes('KULÜP') && 
     (s.level === 'Ortaokul' || (s.levels && s.levels.includes('Ortaokul')))
   );
+  
+  console.log(`🔍 Kulüp dersleri tespit edildi: İlkokul=${ilkokulKulupDersleri.length}, Ortaokul=${ortaokulKulupDersleri.length}`);
   
   // İlkokul kulüp dersleri için kısıtlamalar
   ilkokulKulupDersleri.forEach(subject => {
@@ -228,10 +231,81 @@ export function applyFixedClubConstraints(
     });
   });
   
+  // Yemek saatleri için kısıtlamalar ekle
+  // İlkokul/Anaokulu için 5. ders, Ortaokul için 6. ders
+  subjects.forEach(subject => {
+    const subjectLevels = subject.levels || [subject.level];
+    
+    // İlkokul/Anaokulu dersleri için 5. ders saatini 'unavailable' yap
+    if (subjectLevels.includes('İlkokul') || subjectLevels.includes('Anaokulu')) {
+      DAYS.forEach(day => {
+        const constraintId = `fixed-lunch-${subject.id}-${day}-5`;
+        
+        const existingIndex = updatedConstraints.findIndex(c => 
+          c.entityType === 'subject' && 
+          c.entityId === subject.id && 
+          c.day === day && 
+          c.period === '5'
+        );
+        
+        if (existingIndex !== -1) {
+          updatedConstraints[existingIndex] = {
+            ...updatedConstraints[existingIndex],
+            constraintType: 'unavailable',
+            reason: 'Yemek Saati - Ders Atanamaz',
+            updatedAt: new Date()
+          };
+        } else {
+          updatedConstraints.push({
+            id: constraintId,
+            entityType: 'subject',
+            entityId: subject.id,
+            day,
+            period: '5',
+            constraintType: 'unavailable',
+            reason: 'Yemek Saati - Ders Atanamaz',
+            createdAt: new Date(),
+            updatedAt: new Date()
+          });
+        }
+      });
+    }
+    
+    // Ortaokul dersleri için 6. ders saatini 'unavailable' yap
+    if (subjectLevels.includes('Ortaokul')) {
+      DAYS.forEach(day => {
+        const constraintId = `fixed-lunch-${subject.id}-${day}-6`;
+        
+        const existingIndex = updatedConstraints.findIndex(c => 
+          c.entityType === 'subject' && 
+          c.entityId === subject.id && 
+          c.day === day && 
+          c.period === '6'
+        );
+        
+        if (existingIndex !== -1) {
+          updatedConstraints[existingIndex] = {
+            ...updatedConstraints[existingIndex],
+            constraintType: 'unavailable',
+            reason: 'Yemek Saati - Ders Atanamaz',
+            updatedAt: new Date()
+          };
+        } else {
+          updatedConstraints.push({
+            id: constraintId,
+            entityType: 'subject',
+            entityId: subject.id,
+            day,
+            period: '6',
+            constraintType: 'unavailable',
+            reason: 'Yemek Saati - Ders Atanamaz',
+            createdAt: new Date(),
+            updatedAt: new Date()
+          });
+        }
+      });
+    }
+  });
+  
   return updatedConstraints;
 }
-
-// DAYS ve PERIODS değişkenlerini import etmek yerine burada tanımlıyoruz
-// Bu dosya bağımsız olarak çalışabilsin diye
-const DAYS = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma'];
-const PERIODS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];

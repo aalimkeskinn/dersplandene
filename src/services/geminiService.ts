@@ -179,6 +179,7 @@ ${formattedConstraints.length > 0 ? formattedConstraints.map(c =>
 3. **Branş Uyumu**: Öğretmen sadece kendi branşındaki dersleri verebilir
 4. **Sabit Saatler**: Yemek, hazırlık, kahvaltı saatleri değiştirilemez
 5. **Kısıtlama Uyumu**: "unavailable" kısıtlamaları kesinlikle ihlal edilemez
+6. **Yemek Saatleri**: Yemek saatlerinde (İlkokul/Anaokulu: 5. ders, Ortaokul: 6. ders) ders atanamaz
 
 ### OPTİMİZASYON PRİORİTELERİ:
 1. **Dağıtım Şekilleri**: Derslerin belirtilen dağıtım şekillerine uygun yerleştirilmesi
@@ -352,6 +353,23 @@ Lütfen her öğretmen için aşağıdaki JSON formatında program oluştur:
           PERIODS.forEach(period => {
             const slot = teacherSchedule.schedule[day]?.[period];
             
+            // YEMEK SAATLERİNİ KONTROL ET
+            const teacher = teachers.find(t => t.id === teacherId);
+            if (teacher) {
+              const teacherLevel = teacher.levels?.[0] || teacher.level;
+              const lunchPeriod = teacherLevel === 'Ortaokul' ? '6' : '5';
+              
+              // Yemek saati ise sabit slot ekle
+              if (period === lunchPeriod) {
+                schedule[day][period] = {
+                  classId: 'fixed-period',
+                  subjectId: 'fixed-lunch',
+                  isFixed: true
+                };
+                return; // Bu slot için işlemi sonlandır
+              }
+            }
+            
             if (slot && slot.classId) {
               schedule[day][period] = {
                 classId: slot.classId,
@@ -378,7 +396,7 @@ Lütfen her öğretmen için aşağıdaki JSON formatında program oluştur:
         DAYS.forEach(day => {
           PERIODS.forEach(period => {
             const slot = schedule.schedule[day]?.[period];
-            if (slot && slot.classId && slot.subjectId) {
+            if (slot && slot.classId && slot.subjectId && slot.classId !== 'fixed-period') {
               placedLessons++;
               
               // Mapping bazında atama sayısını takip et
@@ -430,7 +448,9 @@ Lütfen her öğretmen için aşağıdaki JSON formatında program oluştur:
           suggestions: [
             'AI tarafından oluşturulan program',
             'Öğretmen yükleri dengeli dağıtıldı',
-            'Çakışmalar önlendi'
+            'Çakışmalar önlendi',
+            'Kulüp dersleri 2 saatlik bloklar halinde yerleştirildi',
+            'Yemek saatlerine ders atanmadı'
           ]
         }
       };
