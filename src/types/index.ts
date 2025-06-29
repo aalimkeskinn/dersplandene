@@ -14,7 +14,7 @@ export interface Teacher {
   level: 'Anaokulu' | 'İlkokul' | 'Ortaokul';
   levels?: ('Anaokulu' | 'İlkokul' | 'Ortaokul')[];
   subjectIds?: string[];
-  totalWeeklyHours?: number; // YENİ: Öğretmenin toplam ders yükü
+  totalWeeklyHours?: number; // Öğretmenin toplam ders yükü
   createdAt: Date;
 }
 

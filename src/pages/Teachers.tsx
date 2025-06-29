@@ -40,6 +40,7 @@ const Teachers = () => {
     branch: '',
     levels: [] as ('Anaokulu' | 'İlkokul' | 'Ortaokul')[],
     subjectIds: [] as string[],
+    totalWeeklyHours: '45', // YENİ: Varsayılan haftalık ders saati
   });
 
   useEffect(() => {
@@ -158,6 +159,29 @@ const Teachers = () => {
     }, 0);
   };
 
+  // YENİ: Öğretmenin toplam hedef ders saatini hesapla
+  const calculateTeacherTotalTargetHours = (teacherId: string): number => {
+    let totalHours = 0;
+    
+    // Tüm sınıflardaki atamalarını kontrol et
+    classes.forEach(classItem => {
+      if (!classItem.assignments) return;
+      
+      const assignment = classItem.assignments.find(a => a.teacherId === teacherId);
+      if (!assignment) return;
+      
+      // Bu sınıftaki tüm derslerinin saatlerini topla
+      assignment.subjectIds.forEach(subjectId => {
+        const subject = subjects.find(s => s.id === subjectId);
+        if (subject) {
+          totalHours += subject.weeklyHours;
+        }
+      });
+    });
+    
+    return totalHours;
+  };
+
   const handleDeleteAllTeachers = () => {
     if (teachers.length === 0) {
       warning('⚠️ Silinecek Öğretmen Yok', 'Sistemde silinecek öğretmen bulunamadı');
@@ -188,6 +212,14 @@ const Teachers = () => {
     e.preventDefault();
     if (!formData.branch) { error('❌ Branş Seçimi Gerekli', 'Lütfen bir branş seçin.'); return; }
     if (formData.levels.length === 0) { error('❌ Eğitim Seviyesi Gerekli', 'En az bir eğitim seviyesi seçmelisiniz.'); return; }
+    
+    // YENİ: Haftalık ders saati kontrolü
+    const weeklyHours = parseInt(formData.totalWeeklyHours);
+    if (isNaN(weeklyHours) || weeklyHours <= 0 || weeklyHours > 100) {
+      error('❌ Geçersiz Haftalık Ders Saati', 'Haftalık ders saati 1-100 arasında olmalıdır.');
+      return;
+    }
+    
     try {
       const teacherData = { 
         name: formData.name, 
@@ -195,7 +227,8 @@ const Teachers = () => {
         branches: [formData.branch], 
         level: formData.levels[0], 
         levels: formData.levels, 
-        subjectIds: formData.subjectIds
+        subjectIds: formData.subjectIds,
+        totalWeeklyHours: weeklyHours // YENİ: Haftalık ders saati
       };
       if (editingTeacher) {
         await update(editingTeacher.id, teacherData);
@@ -222,7 +255,8 @@ const Teachers = () => {
             branch: teacher.branch, 
             level: teacher.level as Teacher['level'], 
             branches: [teacher.branch], 
-            levels: [teacher.level as 'Anaokulu' | 'İlkokul' | 'Ortaokul']
+            levels: [teacher.level as 'Anaokulu' | 'İlkokul' | 'Ortaokul'],
+            totalWeeklyHours: 45 // YENİ: Varsayılan haftalık ders saati
           } as Omit<Teacher, 'id' | 'createdAt'>);
         }
       }
@@ -235,7 +269,13 @@ const Teachers = () => {
   };
 
   const resetForm = () => { 
-    setFormData({ name: '', branch: '', levels: [], subjectIds: [] }); 
+    setFormData({ 
+      name: '', 
+      branch: '', 
+      levels: [], 
+      subjectIds: [],
+      totalWeeklyHours: '45' // YENİ: Varsayılan haftalık ders saati
+    }); 
     setEditingTeacher(null); 
     setIsModalOpen(false); 
   };
@@ -245,7 +285,8 @@ const Teachers = () => {
       name: teacher.name, 
       branch: teacher.branch, 
       levels: teacher.levels || [teacher.level], 
-      subjectIds: teacher.subjectIds || []
+      subjectIds: teacher.subjectIds || [],
+      totalWeeklyHours: teacher.totalWeeklyHours?.toString() || '45' // YENİ: Mevcut haftalık ders saati
     }); 
     setEditingTeacher(teacher); 
     setIsModalOpen(true); 
@@ -385,8 +426,8 @@ const Teachers = () => {
                   const totalActualHours = Object.values(actualHoursByLevel).reduce((sum, hours) => sum + hours, 0);
                   const totalTargetHours = Object.values(targetHoursByLevel).reduce((sum, hours) => sum + hours, 0);
                   
-                  // Maksimum ders saati kontrolü
-                  const maxWeeklyHours = 45; // Haftalık maksimum 45 saat
+                  // YENİ: Öğretmenin maksimum ders saati kontrolü
+                  const maxWeeklyHours = teacher.totalWeeklyHours || 45; // Öğretmenin belirtilen maksimum saati veya varsayılan 45
                   const isOverloaded = totalActualHours > maxWeeklyHours;
 
                   return (
@@ -400,6 +441,11 @@ const Teachers = () => {
                           <Clock size={12} className="mr-1" />
                           {totalActualHours} / {totalTargetHours} saat
                           {isOverloaded && <span className="ml-1 text-red-600">⚠️</span>}
+                        </div>
+                        
+                        {/* YENİ: Maksimum ders saati gösterimi */}
+                        <div className="mt-1 text-xs text-gray-500">
+                          Maksimum: {maxWeeklyHours} saat
                         </div>
                         
                         {/* Seviyeye göre ayrılmış yük gösterimi */}
@@ -439,6 +485,16 @@ const Teachers = () => {
         <form onSubmit={handleSubmit}>
           <Input label="Ad Soyad" value={formData.name} onChange={(value) => setFormData({ ...formData, name: value })} placeholder="Örn: Ahmet Yılmaz" required />
           <Select label="Branş" value={formData.branch} onChange={(value) => setFormData({ ...formData, branch: value })} options={branchOptions} required />
+          
+          {/* YENİ: Haftalık Ders Saati Alanı */}
+          <Input 
+            label="Haftalık Maksimum Ders Saati" 
+            type="number" 
+            value={formData.totalWeeklyHours} 
+            onChange={(value) => setFormData({ ...formData, totalWeeklyHours: value })} 
+            placeholder="Örn: 45" 
+            required 
+          />
           
           <div className="mb-4"><label className="block text-sm font-semibold text-gray-800 mb-2">Eğitim Seviyeleri <span className="text-red-500">*</span></label><div className="flex flex-wrap gap-3">{EDUCATION_LEVELS.map((level) => (<label key={level} className={`flex items-center p-3 border-2 rounded-lg cursor-pointer transition-all ${formData.levels.includes(level) ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}><input type="checkbox" checked={formData.levels.includes(level)} onChange={() => handleLevelToggle(level)} className="sr-only" /><span className="text-sm font-medium">{level}</span>{formData.levels.includes(level) && (<span className="ml-2 text-blue-600">✓</span>)}</label>))}</div>{formData.levels.length > 0 && (<p className="text-xs text-blue-600 mt-2">✨ Seçilen seviyeler: {formData.levels.join(', ')}</p>)}</div>
           <div className="mt-6 pt-6 border-t border-gray-200">

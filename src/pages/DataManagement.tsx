@@ -71,7 +71,9 @@ const DataManagement = () => {
   const [isImportingAll, setIsImportingAll] = useState(false);
   
   // YENİ: Veri sağlığı kontrolü için state
-  const [healthCheckResults, setHealthCheckResults] = useState<{ overbookedTeachers: { name: string; totalHours: number }[] }>({ overbookedTeachers: [] });
+  const [healthCheckResults, setHealthCheckResults] = useState<{ 
+    overbookedTeachers: { name: string; totalHours: number; maxHours: number }[] 
+  }>({ overbookedTeachers: [] });
   const [isHealthCheckModalOpen, setIsHealthCheckModalOpen] = useState(false);
 
   // YENİ: Veri Sağlığı Kontrolü Fonksiyonu
@@ -92,12 +94,19 @@ const DataManagement = () => {
       });
     });
 
-    const overbookedTeachers: { name: string; totalHours: number }[] = [];
+    const overbookedTeachers: { name: string; totalHours: number; maxHours: number }[] = [];
     teacherHours.forEach((totalHours, teacherId) => {
-      if (totalHours > 45) { // Haftalık 45 saat limiti
-        const teacher = teachers.find(t => t.id === teacherId);
-        if (teacher) {
-          overbookedTeachers.push({ name: teacher.name, totalHours });
+      const teacher = teachers.find(t => t.id === teacherId);
+      if (teacher) {
+        // Öğretmenin maksimum ders saati (totalWeeklyHours varsa onu kullan, yoksa 45)
+        const maxHours = teacher.totalWeeklyHours || 45;
+        
+        if (totalHours > maxHours) {
+          overbookedTeachers.push({ 
+            name: teacher.name, 
+            totalHours,
+            maxHours
+          });
         }
       }
     });
@@ -130,7 +139,9 @@ const DataManagement = () => {
   };
 
   const handleDownloadCSVTemplate = () => {
-    const templateContent = `öğretmen adı;branş;eğitim seviyesi;ders Adı;sınıf ve şube;haftalık saat\n"Öğretmen 1";"SINIF ÖĞRETMENLİĞİ";"İLKOKUL";"TÜRKÇE";"1A";"10"\n"Öğretmen 1";"SINIF ÖĞRETMENLİĞİ";"İLKOKUL";"MATEMATİK";"1A";"5"`;
+    const templateContent = `öğretmen adı;branş;eğitim seviyesi;ders Adı;sınıf ve şube;haftalık saat;Dağıtım Şekli
+"Öğretmen 1";"SINIF ÖĞRETMENLİĞİ";"İLKOKUL";"TÜRKÇE";"1A";"10";"2+2+2+2+2"
+"Öğretmen 1";"SINIF ÖĞRETMENLİĞİ";"İLKOKUL";"MATEMATİK";"1A";"5";"2+2+1"`;
     downloadCSV(templateContent, 'kapsamli_veri_sablonu.csv');
     success('✅ Şablon İndirildi', 'CSV şablonu başarıyla indirildi');
   };
@@ -174,7 +185,15 @@ const DataManagement = () => {
             if (!teacherIdMap.has(name)) {
                 const subjectIds = Array.from(teacherToSubjectIds.get(name) || []);
                 const docRef = doc(collection(db, "teachers"));
-                secondBatch.set(docRef, { ...teacherData, subjectIds, createdAt: new Date() });
+                
+                // YENİ: totalWeeklyHours değerini doğrudan ekle
+                secondBatch.set(docRef, { 
+                    ...teacherData, 
+                    subjectIds, 
+                    totalWeeklyHours: teacherData.totalWeeklyHours || 0,
+                    createdAt: new Date() 
+                });
+                
                 teacherIdMap.set(name, docRef.id);
             }
         }
@@ -373,13 +392,16 @@ const DataManagement = () => {
             <div className="p-4 bg-red-50 border-l-4 border-red-400 mb-4">
               <div className="flex">
                 <div className="flex-shrink-0"><XCircle className="h-5 w-5 text-red-400" /></div>
-                <div className="ml-3"><p className="text-sm text-red-700">Aşağıdaki öğretmenlerin haftalık ders yükleri 45 saati aşıyor. Bu durum program oluşturulmasını imkansız hale getirebilir.</p></div>
+                <div className="ml-3"><p className="text-sm text-red-700">Aşağıdaki öğretmenlerin haftalık ders yükleri maksimum limitlerini aşıyor. Bu durum program oluşturulmasını imkansız hale getirebilir.</p></div>
               </div>
             </div>
             <ul className="divide-y divide-gray-200">
               {healthCheckResults.overbookedTeachers.map(teacher => (
                 <li key={teacher.name} className="py-3 flex justify-between items-center">
-                  <span className="font-medium">{teacher.name}</span>
+                  <div>
+                    <span className="font-medium">{teacher.name}</span>
+                    <span className="text-xs text-gray-500 ml-2">(Limit: {teacher.maxHours} saat)</span>
+                  </div>
                   <span className="bg-red-100 text-red-800 text-sm font-semibold px-3 py-1 rounded-full">{teacher.totalHours} saat</span>
                 </li>
               ))}

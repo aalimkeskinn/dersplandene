@@ -36,6 +36,9 @@ export async function generateAIEnhancedSchedule(
     const prioritizedMappings = prioritizeClassTeacherMappings(enhancedMappings, allTeachers, allClasses, allSubjects);
     console.log(`✅ Sınıf öğretmeni dersleri önceliklendirildi`);
     
+    // ÖĞRETMENLERİN HAFTALIK DERS SAATI LİMİTLERİNİ KONTROL ET
+    validateTeacherWeeklyHours(prioritizedMappings, allTeachers);
+    
     if (useAI) {
       // Gemini AI ile program oluştur
       console.log('🤖 Gemini AI devreye giriyor...');
@@ -84,6 +87,38 @@ export async function generateAIEnhancedSchedule(
 }
 
 /**
+ * Öğretmenlerin haftalık ders saati limitlerini kontrol et
+ */
+function validateTeacherWeeklyHours(
+  mappings: SubjectTeacherMapping[],
+  allTeachers: Teacher[]
+): void {
+  // Öğretmen bazında toplam ders saatlerini hesapla
+  const teacherTotalHours = new Map<string, number>();
+  
+  mappings.forEach(mapping => {
+    const { teacherId, weeklyHours } = mapping;
+    teacherTotalHours.set(
+      teacherId, 
+      (teacherTotalHours.get(teacherId) || 0) + weeklyHours
+    );
+  });
+  
+  // Her öğretmen için limit kontrolü yap
+  teacherTotalHours.forEach((totalHours, teacherId) => {
+    const teacher = allTeachers.find(t => t.id === teacherId);
+    if (!teacher) return;
+    
+    // Öğretmenin maksimum ders saati (totalWeeklyHours varsa onu kullan, yoksa 45)
+    const maxWeeklyHours = teacher.totalWeeklyHours || 45;
+    
+    if (totalHours > maxWeeklyHours) {
+      console.warn(`⚠️ UYARI: ${teacher.name} öğretmeninin toplam ders saati (${totalHours}) maksimum limiti (${maxWeeklyHours}) aşıyor!`);
+    }
+  });
+}
+
+/**
  * Sınıf öğretmenlerinin derslerini önceliklendirme
  */
 function prioritizeClassTeacherMappings(
@@ -96,17 +131,17 @@ function prioritizeClassTeacherMappings(
   const classTeacherMappings: SubjectTeacherMapping[] = [];
   const otherMappings: SubjectTeacherMapping[] = [];
   
-  mappings.forEach(mapping => {
-    const classItem = allClasses.find(c => c.id === mapping.classId);
-    const subject = allSubjects.find(s => s.id === mapping.subjectId);
+  mappings.forEach(m => {
+    const classItem = allClasses.find(c => c.id === m.classId);
+    const subject = allSubjects.find(s => s.id === m.subjectId);
     
     if (!classItem || !subject) {
-      otherMappings.push(mapping);
+      otherMappings.push(m);
       return;
     }
     
     // Sınıf öğretmeni görevi mi?
-    const isClassTeacherTask = classItem.classTeacherId === mapping.teacherId;
+    const isClassTeacherTask = classItem.classTeacherId === m.teacherId;
     
     // Temel ders mi? (Türkçe, Matematik, Hayat Bilgisi)
     const isMainSubject = subject.name.includes('Türkçe') || 
@@ -120,7 +155,7 @@ function prioritizeClassTeacherMappings(
     if (isClassTeacherTask && (classLevel === 'İlkokul' || classLevel === 'Anaokulu')) {
       // Önceliğini yükselt
       const prioritizedMapping = {
-        ...mapping,
+        ...m,
         priority: 'high' as 'high' | 'medium' | 'low'
       };
       
@@ -131,7 +166,7 @@ function prioritizeClassTeacherMappings(
         classTeacherMappings.push(prioritizedMapping);
       }
     } else {
-      otherMappings.push(mapping);
+      otherMappings.push(m);
     }
   });
   
@@ -317,6 +352,35 @@ async function generateHybridSchedule(
       });
     });
     
+    // Öğretmenlerin haftalık ders saati limiti kontrolü
+    const teacherWeeklyHoursViolations: string[] = [];
+    combinedSchedules.forEach(schedule => {
+      const teacherId = schedule.teacherId;
+      const teacher = allTeachers.find(t => t.id === teacherId);
+      if (!teacher) return;
+      
+      // Öğretmenin haftalık toplam ders saatini hesapla
+      let totalHours = 0;
+      DAYS.forEach(day => {
+        PERIODS.forEach(period => {
+          const slot = schedule.schedule[day]?.[period];
+          if (slot && slot.classId && slot.classId !== 'fixed-period') {
+            totalHours++;
+          }
+        });
+      });
+      
+      // Öğretmenin maksimum ders saati (totalWeeklyHours varsa onu kullan, yoksa 45)
+      const maxWeeklyHours = teacher.totalWeeklyHours || 45;
+      
+      // Eğer öğretmen maksimum ders saatini aşmışsa, uyarı ekle
+      if (totalHours > maxWeeklyHours) {
+        teacherWeeklyHoursViolations.push(
+          `${teacher.name} öğretmeni maksimum haftalık ders saatini (${maxWeeklyHours}) aşıyor: ${totalHours} saat`
+        );
+      }
+    });
+    
     return {
       success: true,
       schedules: combinedSchedules,
@@ -329,7 +393,8 @@ async function generateHybridSchedule(
         'AI hibrit yaklaşım kullanıldı',
         ...classicResult.warnings,
         ...classWarnings,
-        ...teacherClassDailyHoursViolations
+        ...teacherClassDailyHoursViolations,
+        ...teacherWeeklyHoursViolations
       ],
       errors: classicResult.errors,
       aiInsights: {
@@ -342,7 +407,8 @@ async function generateHybridSchedule(
           'Çakışmalar önlendi',
           'Bir öğretmen, bir sınıfa günde en fazla 4 saat ders verecek şekilde planlandı (sınıf öğretmenleri için)',
           'Her sınıf için 45 saatlik ders hedeflendi',
-          'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirildi'
+          'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirildi',
+          'Öğretmenlerin haftalık maksimum ders saati limitleri dikkate alındı'
         ]
       }
     };
@@ -492,7 +558,8 @@ async function generateClassicSchedule(
         'Temel optimizasyonlar uygulandı',
         'Bir öğretmen, bir sınıfa günde en fazla 4 saat ders verecek şekilde planlandı (sınıf öğretmenleri için)',
         'Her sınıf için 45 saatlik ders hedeflendi',
-        'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirildi'
+        'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirildi',
+        'Öğretmenlerin haftalık maksimum ders saati limitleri dikkate alındı'
       ]
     }
   };
@@ -533,7 +600,8 @@ export async function analyzeScheduleWithAI(
         'Sınıf geçişleri minimize edilebilir',
         'Bir öğretmenin aynı sınıfa günde en fazla 4 saat ders vermesi sağlanabilir (sınıf öğretmenleri için)',
         'Her sınıfın 45 saatlik ders ile doldurulması hedeflenebilir',
-        'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirilebilir'
+        'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirilebilir',
+        'Öğretmenlerin haftalık maksimum ders saati limitleri dikkate alınabilir'
       ]
     };
   } catch (error) {
@@ -569,7 +637,8 @@ export async function resolveConflictsWithAI(
         'Yeni program önerisi hazırlandı',
         'Bir öğretmenin aynı sınıfa günde en fazla 4 saat ders vermesi sağlandı (sınıf öğretmenleri için)',
         'Her sınıfın 45 saatlik ders ile doldurulması hedeflendi',
-        'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirildi'
+        'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirildi',
+        'Öğretmenlerin haftalık maksimum ders saati limitleri dikkate alındı'
       ]
     };
   } catch (error) {

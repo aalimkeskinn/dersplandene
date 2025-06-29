@@ -482,6 +482,16 @@ export function generateSystematicSchedule(
     
     console.log(`🔍 Sınıf öğretmeni görevi: ${teacher.name} → ${classItem.name} → ${subject.name} (${blockLength} saat)${isMainSubject ? ' [Temel Ders]' : ''}`);
     
+    // YENİ: Öğretmenin toplam ders saati limitini kontrol et
+    const currentTeacherTotalHours = Array.from(teacherLevelActualHours.get(teacherId)?.values() || []).reduce((sum, hours) => sum + hours, 0);
+    const teacherMaxHours = teacher.totalWeeklyHours || 45; // Öğretmenin belirtilen maksimum saati veya varsayılan 45
+    
+    if (currentTeacherTotalHours + blockLength > teacherMaxHours) {
+      console.warn(`UYARI: ${teacher.name} öğretmeni maksimum ders saatine (${teacherMaxHours}) ulaştı. Şu anki: ${currentTeacherTotalHours}, Eklenecek: ${blockLength}`);
+      task.isPlaced = false;
+      continue;
+    }
+    
     // Temel dersleri (Türkçe, Matematik) sabah saatlerine yerleştirmeye çalış
     const preferredPeriods = isMainSubject ? ['1', '2', '3', '4'] : PERIODS;
     
@@ -1016,6 +1026,30 @@ export function generateSystematicSchedule(
   const totalClassTeacherTasks = classTeacherTasks.length;
   const placedClassTeacherTasks = classTeacherTasks.filter(task => task.isPlaced).length;
   const classTeacherTasksPlacementRate = totalClassTeacherTasks > 0 ? Math.round((placedClassTeacherTasks / totalClassTeacherTasks) * 100) : 100;
+  
+  // YENİ: Öğretmenlerin haftalık ders saati limitlerini kontrol et
+  const teacherWeeklyHoursViolations: string[] = [];
+  selectedTeacherIds.forEach(teacherId => {
+    const teacher = allTeachers.find(t => t.id === teacherId);
+    if (!teacher) return;
+    
+    // Öğretmenin toplam ders saatini hesapla
+    const totalHours = Array.from(teacherLevelActualHours.get(teacherId)?.values() || []).reduce((sum, hours) => sum + hours, 0);
+    
+    // Öğretmenin maksimum ders saati (totalWeeklyHours varsa onu kullan, yoksa 45)
+    const maxWeeklyHours = teacher.totalWeeklyHours || 45;
+    
+    // Eğer öğretmen maksimum ders saatini aşmışsa, uyarı ekle
+    if (totalHours > maxWeeklyHours) {
+      teacherWeeklyHoursViolations.push(
+        `${teacher.name} öğretmeni maksimum haftalık ders saatini (${maxWeeklyHours}) aşıyor: ${totalHours} saat`
+      );
+    }
+  });
+  
+  if (teacherWeeklyHoursViolations.length > 0) {
+    warnings.push(...teacherWeeklyHoursViolations);
+  }
   
   console.log(`✅ Program oluşturma tamamlandı. Süre: ${(Date.now() - startTime) / 1000} saniye. Sonuç: ${placedLessons} / ${totalLessonsToPlace}`);
   console.log(`📊 Sınıf öğretmeni görevleri: ${placedClassTeacherTasks} / ${totalClassTeacherTasks} (${classTeacherTasksPlacementRate}%)`);

@@ -21,6 +21,9 @@ export function createSubjectTeacherMappings(
   const selectedSubjectIds = new Set(wizardData.subjects.selectedSubjects);
   const selectedTeacherIds = new Set(wizardData.teachers.selectedTeachers);
 
+  // YENİ: Öğretmenlerin toplam ders saatlerini takip et
+  const teacherAssignedHours = new Map<string, number>();
+  
   // YENİ: Önce sınıf öğretmenlerinin atamalarını işle
   const classTeacherMappings: SubjectTeacherMapping[] = [];
   const regularMappings: SubjectTeacherMapping[] = [];
@@ -66,6 +69,20 @@ export function createSubjectTeacherMappings(
           const isMainSubject = subject.name.includes('Türkçe') || 
                                 subject.name.includes('Matematik') || 
                                 subject.name.includes('Hayat Bilgisi');
+
+          // YENİ: Öğretmenin toplam ders saatini takip et
+          if (!teacherAssignedHours.has(teacherId)) {
+            teacherAssignedHours.set(teacherId, 0);
+          }
+          teacherAssignedHours.set(teacherId, teacherAssignedHours.get(teacherId)! + weeklyHours);
+          
+          // YENİ: Öğretmenin haftalık ders saati limitini kontrol et
+          const teacherTotalHours = teacherAssignedHours.get(teacherId)!;
+          const teacherMaxHours = teacher.totalWeeklyHours || 45;
+          
+          if (teacherTotalHours > teacherMaxHours) {
+            errors.push(`UYARI: ${teacher.name} öğretmeninin toplam ders saati (${teacherTotalHours}) maksimum limiti (${teacherMaxHours}) aşıyor!`);
+          }
 
           const task: SubjectTeacherMapping = {
             id: `${classId}-${subjectId}`, 

@@ -48,38 +48,6 @@ export const checkSlotConflict = (
     schedulesCount: allSchedules.length
   });
 
-  // YENİ: Bir öğretmenin aynı sınıfa günde en fazla 4 saat ders verebilmesi kuralı
-  if (mode === 'teacher') {
-    // Öğretmenin bu gün için bu sınıfa kaç saat ders verdiğini kontrol et
-    const teacherSchedule = allSchedules.find(s => s.teacherId === currentEntityId);
-    if (teacherSchedule) {
-      let dailyHoursForClass = 0;
-      
-      // Bu gün için öğretmenin bu sınıfa verdiği ders saatlerini say
-      Object.entries(teacherSchedule.schedule[sanitizedDay] || {}).forEach(([p, slot]) => {
-        if (slot?.classId === targetId && slot.classId !== 'fixed-period') {
-          dailyHoursForClass++;
-        }
-      });
-      
-      // Sınıf öğretmeni mi kontrol et
-      const classItem = classes.find(c => c.id === targetId);
-      const isClassTeacher = classItem?.classTeacherId === currentEntityId;
-      const maxDailyHours = isClassTeacher ? 4 : 2; // Sınıf öğretmenleri için 4, diğerleri için 2
-      
-      // Eğer öğretmen bu sınıfa bu gün zaten maksimum ders vermişse, çakışma var
-      if (dailyHoursForClass >= maxDailyHours) {
-        const teacher = teachers.find(t => t.id === currentEntityId);
-        const classItem = classes.find(c => c.id === targetId);
-        
-        return {
-          hasConflict: true,
-          message: `${teacher?.name || 'Öğretmen'} ${sanitizedDay} günü ${classItem?.name || 'sınıf'} için maksimum ders saatine (${maxDailyHours}) ulaştı`
-        };
-      }
-    }
-  }
-
   // YENİ: Öğretmenin toplam haftalık ders saati kontrolü
   if (mode === 'teacher') {
     const teacher = teachers.find(t => t.id === currentEntityId);
@@ -107,6 +75,38 @@ export const checkSlotConflict = (
         return {
           hasConflict: true,
           message: `${teacher.name} öğretmeni maksimum haftalık ders saatine (${maxWeeklyHours}) ulaştı`
+        };
+      }
+    }
+  }
+
+  // YENİ: Bir öğretmenin aynı sınıfa günde en fazla 4 saat ders verebilmesi kuralı
+  if (mode === 'teacher') {
+    // Öğretmenin bu gün için bu sınıfa kaç saat ders verdiğini kontrol et
+    const teacherSchedule = allSchedules.find(s => s.teacherId === currentEntityId);
+    if (teacherSchedule) {
+      let dailyHoursForClass = 0;
+      
+      // Bu gün için öğretmenin bu sınıfa verdiği ders saatlerini say
+      Object.entries(teacherSchedule.schedule[sanitizedDay] || {}).forEach(([p, slot]) => {
+        if (slot?.classId === targetId && slot.classId !== 'fixed-period') {
+          dailyHoursForClass++;
+        }
+      });
+      
+      // Sınıf öğretmeni mi kontrol et
+      const classItem = classes.find(c => c.id === targetId);
+      const isClassTeacher = classItem?.classTeacherId === currentEntityId;
+      const maxDailyHours = isClassTeacher ? 4 : 2; // Sınıf öğretmenleri için 4, diğerleri için 2
+      
+      // Eğer öğretmen bu sınıfa bu gün zaten maksimum ders vermişse, çakışma var
+      if (dailyHoursForClass >= maxDailyHours) {
+        const teacher = teachers.find(t => t.id === currentEntityId);
+        const classItem = classes.find(c => c.id === targetId);
+        
+        return {
+          hasConflict: true,
+          message: `${teacher?.name || 'Öğretmen'} ${sanitizedDay} günü ${classItem?.name || 'sınıf'} için maksimum ders saatine (${maxDailyHours}) ulaştı`
         };
       }
     }

@@ -26,6 +26,9 @@ export const parseComprehensiveCSV = (csvContent: string): ParsedCSVData => {
   const classSubjectTeacherLinks: { className: string, subjectKey: string, teacherName: string }[] = [];
   const errors: string[] = [];
 
+  // Öğretmenlerin toplam ders saatlerini takip etmek için
+  const teacherTotalHours = new Map<string, number>();
+
   const lines = csvContent.split('\n').filter(line => line.trim() && !line.startsWith(';'));
   const dataLines = lines.slice(1);
 
@@ -70,10 +73,22 @@ export const parseComprehensiveCSV = (csvContent: string): ParsedCSVData => {
     
     teacherNames.forEach(teacherName => {
         if (!teachers.has(teacherName)) {
-            teachers.set(teacherName, { name: teacherName, branches: new Set(), levels: new Set(), totalWeeklyHours: 0 });
+            teachers.set(teacherName, { 
+                name: teacherName, 
+                branches: new Set(), 
+                levels: new Set(), 
+                totalWeeklyHours: 0 
+            });
         }
+        
         const teacherEntry = teachers.get(teacherName)!;
-        (teacherEntry.totalWeeklyHours as number) += weeklyHours; // *** ANA DEĞİŞİKLİK: Toplam saati artır ***
+        
+        // Öğretmenin toplam ders saatini takip et
+        if (!teacherTotalHours.has(teacherName)) {
+            teacherTotalHours.set(teacherName, 0);
+        }
+        teacherTotalHours.set(teacherName, teacherTotalHours.get(teacherName)! + weeklyHours);
+        
         branches.forEach(branch => (teacherEntry.branches as Set<string>).add(branch));
         levels.forEach(l => (teacherEntry.levels as Set<any>).add(l));
     });
@@ -99,11 +114,15 @@ export const parseComprehensiveCSV = (csvContent: string): ParsedCSVData => {
     });
   });
 
-  teachers.forEach(teacher => {
+  // Öğretmenlerin toplam ders saatlerini ayarla
+  teachers.forEach((teacher, teacherName) => {
     teacher.branches = Array.from(teacher.branches as Set<string>);
     teacher.levels = Array.from(teacher.levels as Set<any>);
     teacher.branch = (teacher.branches as string[]).join(' / ');
     teacher.level = (teacher.levels as any[])[0] || 'İlkokul';
+    
+    // Öğretmenin toplam ders saatini ayarla
+    teacher.totalWeeklyHours = teacherTotalHours.get(teacherName) || 0;
   });
 
   return { teachers, classes, subjects, classSubjectTeacherLinks, errors };
