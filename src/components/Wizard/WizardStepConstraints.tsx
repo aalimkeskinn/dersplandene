@@ -7,7 +7,7 @@ import Button from '../UI/Button';
 import Select from '../UI/Select';
 import TimeConstraintGrid from '../Constraints/TimeConstraintGrid';
 import { useToast } from '../../hooks/useToast';
-import { applyFixedClubConstraints, apply8ABClassADEConstraints } from '../../utils/fixedConstraints';
+import { applyFixedClubConstraints } from '../../utils/fixedConstraints';
 
 const RULE_TEMPLATES = [
   { 
@@ -67,17 +67,14 @@ const WizardStepConstraints: React.FC<WizardStepConstraintsProps> = ({
   // Sabit kısıtlamaları uygula
   useEffect(() => {
     // Kulüp dersleri için sabit kısıtlamaları uygula
-    let updatedConstraints = applyFixedClubConstraints(subjects, constraints);
-    
-    // 8A ve 8B sınıfları için ADE dersleri kısıtlamalarını uygula
-    updatedConstraints = apply8ABClassADEConstraints(classes, subjects, updatedConstraints);
+    const updatedConstraints = applyFixedClubConstraints(subjects, constraints);
     
     // Eğer kısıtlamalar değiştiyse güncelle
     if (updatedConstraints.length !== constraints.length) {
       handleConstraintsUpdate(updatedConstraints);
-      info('Sabit Kısıtlamalar Uygulandı', 'Kulüp ve ADE dersleri için sabit zaman kısıtlamaları otomatik olarak uygulandı.');
+      info('Sabit Kısıtlamalar Uygulandı', 'Kulüp dersleri için sabit zaman kısıtlamaları otomatik olarak uygulandı.');
     }
-  }, [subjects, classes, constraints.length]);
+  }, [subjects, constraints.length]);
 
   const getEntityOptions = () => {
     switch (activeTab) {
@@ -213,8 +210,7 @@ const WizardStepConstraints: React.FC<WizardStepConstraintsProps> = ({
             <ul className="list-disc list-inside space-y-2 text-sm text-yellow-700">
               <li><strong>İlkokul Kulüp Dersleri:</strong> Perşembe günü 9-10. ders saatlerinde sabit olarak yapılır (2 saat).</li>
               <li><strong>Ortaokul Kulüp Dersleri:</strong> Perşembe günü 7-8. ders saatlerinde sabit olarak yapılır (2 saat).</li>
-              <li><strong>ADE Dersleri (8A ve 8B):</strong> Salı günü 4-5 ve 7-8. ders saatlerinde yapılır (4 saat). İki sınıf beraber bu derslere girer.</li>
-              <li><strong>ADE Dersleri (Diğer Ortaokul):</strong> Salı günü 4-5 ve 7-8. ders saatlerinde yapılır.</li>
+              <li><strong>ADE Dersleri (Ortaokul):</strong> Salı günü 4-5 ve 7-8. ders saatlerinde yapılır.</li>
             </ul>
           </div>
         </div>

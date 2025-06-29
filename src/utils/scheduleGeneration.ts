@@ -10,7 +10,7 @@ function getEntityLevel(entity: Teacher | Class): 'Anaokulu' | 'İlkokul' | 'Ort
 }
 
 /**
- * "Öncelikli Kısıtlı Görev" Algoritması (v42 - ADE Dersleri Düzeltmesi)
+ * "Öncelikli Kısıtlı Görev" Algoritması (v41 - Kulüp Dersleri Düzeltmesi)
  * 1. "ADE", "KULÜP" gibi özel dersleri tespit eder.
  * 2. Önce bu özel dersleri, sadece onlara tanımlanmış zaman kısıtlamalarına göre yerleştirir.
  * 3. Ardından kalan normal dersleri, boş kalan slotlara en verimli şekilde dağıtır.
@@ -25,7 +25,7 @@ export function generateSystematicSchedule(
 ): EnhancedGenerationResult {
   
   const startTime = Date.now();
-  console.log('🚀 Program oluşturma başlatıldı (v42 - ADE Dersleri Düzeltmesi)...');
+  console.log('🚀 Program oluşturma başlatıldı (v41 - Kulüp Dersleri Düzeltmesi)...');
 
   // --- AŞAMA 1: VERİ MATRİSLERİNİ VE GÖREVLERİ HAZIRLA ---
   const classScheduleGrids: { [classId: string]: Schedule['schedule'] } = {};
@@ -114,58 +114,16 @@ export function generateSystematicSchedule(
       }
     }
     // ADE dersleri için özel işlem
-    else if (isADEDersi) {
-      // 8A ve 8B sınıfları için ADE dersleri Salı 4,5,7,8. ders saatlerinde
-      if (classItem.name === '8A' || classItem.name === '8B') {
-        // ADE dersleri için 4 saatlik blok görev oluştur
+    else if (isADEDersi && hasSpecificConstraints) {
+      for(let i=0; i<mapping.weeklyHours; i++){
         specialTasks.push({ 
           mapping, 
-          blockLength: 4, // 4 saatlik blok (4,5,7,8. dersler)
-          taskId: `${mapping.id}-ade-8sinif`, 
+          blockLength: 1, 
+          taskId: `${mapping.id}-ade-${i}`, 
           classLevel, 
           isPlaced: false,
           isSpecial: true
         });
-      }
-      // Diğer sınıflar için normal ADE dersleri
-      else if (hasSpecificConstraints) {
-        for(let i=0; i<mapping.weeklyHours; i++){
-          specialTasks.push({ 
-            mapping, 
-            blockLength: 1, 
-            taskId: `${mapping.id}-ade-${i}`, 
-            classLevel, 
-            isPlaced: false,
-            isSpecial: true
-          });
-        }
-      }
-      else {
-        // Özel kısıtlaması olmayan ADE dersleri normal dersler gibi işlenir
-        let hoursLeft = mapping.weeklyHours;
-        if (distribution.length > 0 && globalRules.useDistributionPatterns) {
-          distribution.forEach((block, index) => {
-            normalTasks.push({ 
-              mapping, 
-              blockLength: block, 
-              taskId: `${mapping.id}-dist-${index}`, 
-              classLevel, 
-              isPlaced: false,
-              isSpecial: false
-            });
-            hoursLeft -= block;
-          });
-        }
-        for (let i = 0; i < hoursLeft; i++) {
-          normalTasks.push({ 
-            mapping, 
-            blockLength: 1, 
-            taskId: `${mapping.id}-single-${i}`, 
-            classLevel, 
-            isPlaced: false,
-            isSpecial: false
-          });
-        }
       }
     }
     // Normal dersler
@@ -205,7 +163,6 @@ export function generateSystematicSchedule(
     const { mapping, classLevel, isSpecial, blockLength } = task;
     const { teacherId, classId, subjectId } = mapping;
     const subject = allSubjects.find(s => s.id === subjectId);
-    const classItem = allClasses.find(c => c.id === classId);
     
     // Kulüp dersleri için sabit zaman dilimlerini belirle
     let fixedSlots: {day: string, period: string}[] = [];
@@ -224,20 +181,8 @@ export function generateSystematicSchedule(
           { day: 'Perşembe', period: '8' }
         ];
       }
-    } 
-    // 8A ve 8B sınıfları için ADE dersleri
-    else if (subject && subject.name.toUpperCase().includes('ADE') && 
-             classItem && (classItem.name === '8A' || classItem.name === '8B')) {
-      // 8A ve 8B sınıfları için ADE dersleri: Salı 4,5,7,8. ders
-      fixedSlots = [
-        { day: 'Salı', period: '4' },
-        { day: 'Salı', period: '5' },
-        { day: 'Salı', period: '7' },
-        { day: 'Salı', period: '8' }
-      ];
-    }
-    // Diğer özel dersler için kısıtlamaları kontrol et
-    else if (isSpecial && hasSpecificConstraints) {
+    } else if (isSpecial && hasSpecificConstraints) {
+      // ADE dersleri veya diğer özel dersler için kısıtlamaları kontrol et
       timeConstraints.forEach(c => {
         if (c.entityType === 'subject' && c.entityId === subjectId && c.constraintType === 'preferred') {
           fixedSlots.push({ day: c.day, period: c.period });
@@ -314,55 +259,7 @@ export function generateSystematicSchedule(
       if (!placed) {
         console.log(`⚠️ Kulüp dersi yerleştirilemedi: ${subject.name}`);
       }
-    }
-    // 8A ve 8B sınıfları için ADE dersleri (4 saatlik blok)
-    else if (subject && subject.name.toUpperCase().includes('ADE') && 
-             classItem && (classItem.name === '8A' || classItem.name === '8B') && 
-             blockLength === 4) {
-      let placed = false;
-      
-      // ADE dersleri için sabit zaman dilimlerini kullan (Salı 4,5,7,8)
-      if (fixedSlots.length >= 4) {
-        // Tüm slotların müsait olup olmadığını kontrol et
-        const slotsAvailable = fixedSlots.every(slot => {
-          const slotKey = `${slot.day}-${slot.period}`;
-          const isTeacherUnavailable = constraintMap.get(`teacher-${teacherId}-${slot.day}-${slot.period}`) === 'unavailable';
-          return !teacherAvailability.get(teacherId)?.has(slotKey) && 
-                 !classAvailability.get(classId)?.has(slotKey) && 
-                 !isTeacherUnavailable;
-        });
-        
-        // Tüm slotlar müsaitse, yerleştir
-        if (slotsAvailable) {
-          // Her bir slotu yerleştir
-          fixedSlots.forEach(slot => {
-            const slotKey = `${slot.day}-${slot.period}`;
-            
-            classScheduleGrids[classId][slot.day][slot.period] = { 
-              subjectId, 
-              teacherId, 
-              classId, 
-              isFixed: false 
-            };
-            teacherAvailability.get(teacherId)!.add(slotKey);
-            classAvailability.get(classId)!.add(slotKey);
-          });
-          
-          // Öğretmen saat sayacını güncelle (4 saat)
-          const currentHours = teacherLevelActualHours.get(teacherId)?.get(classLevel) || 0;
-          teacherLevelActualHours.get(teacherId)?.set(classLevel, currentHours + 4);
-          
-          placed = true;
-          task.isPlaced = true;
-          
-          console.log(`✅ ADE dersi yerleştirildi: ${subject.name}, ${classItem.name}, Salı 4,5,7,8. dersler`);
-        }
-      }
-      
-      if (!placed) {
-        console.log(`⚠️ ADE dersi yerleştirilemedi: ${subject.name}, ${classItem.name}`);
-      }
-    }
+    } 
     // Diğer özel dersler için normal yerleştirme
     else {
       let placed = false;
