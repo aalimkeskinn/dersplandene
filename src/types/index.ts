@@ -15,7 +15,6 @@ export interface Teacher {
   levels?: ('Anaokulu' | 'İlkokul' | 'Ortaokul')[];
   subjectIds?: string[];
   totalWeeklyHours?: number; // YENİ: Öğretmenin toplam ders yükü
-  maxWeeklyHours?: number; // YENİ: Öğretmenin alabileceği maksimum ders saati
   createdAt: Date;
 }
 

@@ -1,3 +1,5 @@
+// --- START OF FILE src/utils/scheduleGeneration.ts ---
+
 import { DAYS, PERIODS, Schedule, Teacher, Class, Subject } from '../types';
 import { SubjectTeacherMapping, EnhancedGenerationResult, WizardData } from '../types/wizard';
 import { TimeConstraint } from '../types/constraints';
@@ -8,12 +10,11 @@ function getEntityLevel(entity: Teacher | Class): 'Anaokulu' | 'İlkokul' | 'Ort
 }
 
 /**
- * "Öncelikli Kısıtlı Görev" Algoritması (v43 - Maksimum Ders Saati Kontrolü)
+ * "Öncelikli Kısıtlı Görev" Algoritması (v42 - Kulüp ve Yemek Saati Düzeltmesi)
  * 1. "KULÜP" derslerini sabit zaman dilimlerinde 2 saatlik bloklar halinde yerleştirir
  * 2. "ADE" gibi özel dersleri tespit eder ve kısıtlamalarına göre yerleştirir
  * 3. Yemek saatlerine ders atanmasını engeller
- * 4. Öğretmenlerin maksimum ders saatini kontrol eder
- * 5. Ardından kalan normal dersleri, boş kalan slotlara en verimli şekilde dağıtır
+ * 4. Ardından kalan normal dersleri, boş kalan slotlara en verimli şekilde dağıtır
  */
 export function generateSystematicSchedule(
   mappings: SubjectTeacherMapping[],
@@ -25,7 +26,7 @@ export function generateSystematicSchedule(
 ): EnhancedGenerationResult {
   
   const startTime = Date.now();
-  console.log('🚀 Program oluşturma başlatıldı (v43 - Maksimum Ders Saati Kontrolü)...');
+  console.log('🚀 Program oluşturma başlatıldı (v42 - Kulüp ve Yemek Saati Düzeltmesi)...');
 
   // --- AŞAMA 1: VERİ MATRİSLERİNİ VE GÖREVLERİ HAZIRLA ---
   const classScheduleGrids: { [classId: string]: Schedule['schedule'] } = {};
@@ -230,7 +231,7 @@ export function generateSystematicSchedule(
           subjectId, 
           teacherId, 
           classId, 
-          isFixed: false // DÜZELTME: Kulüp dersleri normal ders olarak işaretlenir
+          isFixed: false // DÜZELTME: Kulüp dersleri sabit olarak işaretlenmemeli
         };
         
         // Müsaitlik durumlarını güncelle
@@ -330,16 +331,6 @@ export function generateSystematicSchedule(
     if (!teacherLevels.has(getEntityLevel(classItem))) {
         console.warn(`ALGORITMA İHLALİ: ${teacher.name} öğretmeni, ${classItem.name} sınıfına atanamaz. Seviye uyumsuz. Bu görev atlandı.`);
         continue;
-    }
-
-    // DÜZELTME: Öğretmenin maksimum ders saati kontrolü
-    const currentTeacherTotalHours = Array.from(teacherLevelActualHours.get(teacherId)?.values() || []).reduce((sum, hours) => sum + hours, 0);
-    const teacherMaxHours = globalRules.teacherMaxHours?.[teacherId] || 30; // Varsayılan maksimum 30 saat
-    
-    if (currentTeacherTotalHours + blockLength > teacherMaxHours) {
-      console.warn(`UYARI: ${teacher.name} öğretmeni maksimum ders saatine (${teacherMaxHours}) ulaştı. Şu anki: ${currentTeacherTotalHours}, Eklenecek: ${blockLength}`);
-      taskToAttempt.isPlaced = false;
-      continue;
     }
 
     const currentTeacherLevelHours = teacherLevelActualHours.get(teacherId)?.get(classLevel) || 0;
@@ -512,3 +503,4 @@ export function generateSystematicSchedule(
     errors: [],
   };
 }
+// --- END OF FILE src/utils/scheduleGeneration.ts ---

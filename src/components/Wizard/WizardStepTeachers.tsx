@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Users, Check, BookOpen, Clock } from 'lucide-react';
+import { Plus, Edit, Trash2, Users, Check, BookOpen } from 'lucide-react';
 import { Teacher, EDUCATION_LEVELS, Subject, Class } from '../../types';
 import { WizardData } from '../../types/wizard';
 import { useFirestore } from '../../hooks/useFirestore';
@@ -35,7 +35,6 @@ const WizardStepTeachers: React.FC<WizardStepTeachersProps> = ({
     branch: '',
     levels: [] as ('Anaokulu' | 'İlkokul' | 'Ortaokul')[],
     subjectIds: [] as string[],
-    maxWeeklyHours: '30', // YENİ: Maksimum haftalık ders saati
   });
 
   // YENİ EKLENDİ: Otomatik öğretmen seçme mantığı
@@ -78,7 +77,6 @@ const WizardStepTeachers: React.FC<WizardStepTeachersProps> = ({
     if (formData.levels.length === 0) { error('❌ Eğitim Seviyesi Gerekli', 'En az bir eğitim seviyesi seçmelisiniz.'); return; }
     
     try {
-      const maxWeeklyHours = parseInt(formData.maxWeeklyHours) || 30;
       const teacherData = {
         name: formData.name,
         branch: formData.branch,
@@ -86,7 +84,6 @@ const WizardStepTeachers: React.FC<WizardStepTeachersProps> = ({
         level: formData.levels[0],
         levels: formData.levels,
         subjectIds: formData.subjectIds,
-        maxWeeklyHours: maxWeeklyHours // YENİ: Maksimum haftalık ders saati
       };
       if (editingTeacher) {
         await updateTeacher(editingTeacher.id, teacherData);
@@ -102,13 +99,7 @@ const WizardStepTeachers: React.FC<WizardStepTeachersProps> = ({
   };
 
   const resetForm = () => {
-    setFormData({ 
-      name: '', 
-      branch: '', 
-      levels: [], 
-      subjectIds: [],
-      maxWeeklyHours: '30' // Varsayılan maksimum ders saati
-    });
+    setFormData({ name: '', branch: '', levels: [], subjectIds: [] });
     setEditingTeacher(null);
     setIsModalOpen(false);
   };
@@ -119,7 +110,6 @@ const WizardStepTeachers: React.FC<WizardStepTeachersProps> = ({
       branch: teacher.branch,
       levels: teacher.levels || (teacher.level ? [teacher.level] : []),
       subjectIds: teacher.subjectIds || [],
-      maxWeeklyHours: teacher.maxWeeklyHours?.toString() || '30' // Mevcut maksimum ders saati
     });
     setEditingTeacher(teacher);
     setIsModalOpen(true);
@@ -169,12 +159,6 @@ const WizardStepTeachers: React.FC<WizardStepTeachersProps> = ({
                   <h4 className="font-semibold">{teacher.name}</h4>
                   <p className="text-sm text-gray-600 mt-1">Branş: {teacher.branch}</p>
                   <div className="flex flex-wrap gap-1 mt-2">{(teacher.levels || [teacher.level]).map(level => (<span key={level} className={`px-2 py-1 text-xs rounded-full ${level === 'Anaokulu' ? 'bg-green-100 text-green-800' : level === 'İlkokul' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>{level}</span>))}</div>
-                  
-                  {/* YENİ: Maksimum ders saati gösterimi */}
-                  <div className="mt-2 flex items-center text-xs text-gray-600">
-                    <Clock className="w-3 h-3 mr-1" />
-                    <span>Maks: {teacher.maxWeeklyHours || 30} saat/hafta</span>
-                  </div>
                 </div>
                 <div className="absolute bottom-3 right-3 flex space-x-1">
                   <button onClick={e => {e.stopPropagation(); handleEdit(teacher);}} className="p-1 text-gray-400 hover:text-blue-600"><Edit size={14} /></button>
@@ -190,17 +174,6 @@ const WizardStepTeachers: React.FC<WizardStepTeachersProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input label="Ad Soyad" value={formData.name} onChange={(v) => setFormData(p => ({...p, name: v}))} required />
           <Select label="Branş" value={formData.branch} onChange={(v) => setFormData(p => ({...p, branch: v}))} options={branchOptions} required />
-          
-          {/* YENİ: Maksimum haftalık ders saati alanı */}
-          <Input 
-            label="Maksimum Haftalık Ders Saati" 
-            type="number" 
-            value={formData.maxWeeklyHours} 
-            onChange={(v) => setFormData(p => ({...p, maxWeeklyHours: v}))} 
-            placeholder="Örn: 30" 
-            required 
-          />
-          
           <div className="mb-4">
             <label className="block text-sm font-semibold text-gray-800 mb-2">Eğitim Seviyeleri <span className="text-red-500">*</span></label>
             <div className="flex flex-wrap gap-3">{EDUCATION_LEVELS.map(level => (<label key={level} className={`flex items-center p-3 border-2 rounded-lg cursor-pointer ${formData.levels.includes(level) ? 'bg-blue-50 border-blue-500' : 'bg-white border-gray-300'}`}><input type="checkbox" checked={formData.levels.includes(level)} onChange={() => handleLevelToggle(level)} className="sr-only" /><span className="text-sm">{level}</span>{formData.levels.includes(level) && <span className="ml-2 text-blue-600">✓</span>}</label>))}</div>
