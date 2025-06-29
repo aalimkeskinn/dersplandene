@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Users, Search, X, BookOpen, Clock } from 'lucide-react';
 import { Teacher, EDUCATION_LEVELS, Subject, Schedule, Class } from '../types';
 import { useFirestore } from '../hooks/useFirestore';
