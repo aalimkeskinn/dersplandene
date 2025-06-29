@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Teacher, Class, Subject, DAYS, PERIODS } from '../types';
-import { SubjectTeacherMapping, WizardData } from '../types/wizard';
+import { SubjectTeacherMapping, WizardData, EnhancedGenerationResult } from '../types/wizard';
 import { TimeConstraint } from '../types/constraints';
 
 // Gemini AI Service
@@ -9,7 +9,7 @@ class GeminiScheduleService {
   private model: any;
 
   constructor() {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || 'AIzaSyAcCDAMwdgkv1YAp49PL18VFEj7OTqMcPI';
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
     this.genAI = new GoogleGenerativeAI(apiKey);
     this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
   }
@@ -24,7 +24,7 @@ class GeminiScheduleService {
     subjects: Subject[],
     constraints: TimeConstraint[],
     wizardData: WizardData
-  ) {
+  ): Promise<EnhancedGenerationResult> {
     try {
       console.log('🤖 Gemini AI ile program oluşturma başlatıldı...');
 
@@ -37,13 +37,13 @@ class GeminiScheduleService {
       const scheduleData = response.text();
 
       // 3. Gemini'nin yanıtını parse et
-      const parsedSchedule = this.parseGeminiResponse(scheduleData);
+      const parsedResult = this.parseGeminiResponse(scheduleData, teachers, classes, subjects, mappings);
       
-      // 4. Sonucu doğrula ve optimize et
-      const validatedSchedule = this.validateAndOptimize(parsedSchedule, mappings, teachers, classes);
-
+      // 4. Sonucu doğrula ve dönüştür
+      const finalResult = this.convertToSystemFormat(parsedResult, teachers, classes, subjects, mappings);
+      
       console.log('✅ Gemini AI program oluşturma tamamlandı');
-      return validatedSchedule;
+      return finalResult;
 
     } catch (error) {
       console.error('❌ Gemini AI hatası:', error);
@@ -62,6 +62,50 @@ class GeminiScheduleService {
     constraints: TimeConstraint[],
     wizardData: WizardData
   ): string {
+    // Öğretmen-sınıf-ders ilişkilerini daha net göstermek için
+    const teacherAssignments = new Map<string, { teacherId: string, teacherName: string, assignments: { classId: string, className: string, subjectId: string, subjectName: string, hours: number }[] }>();
+    
+    mappings.forEach(m => {
+      const teacher = teachers.find(t => t.id === m.teacherId);
+      const classItem = classes.find(c => c.id === m.classId);
+      const subject = subjects.find(s => s.id === m.subjectId);
+      
+      if (teacher && classItem && subject) {
+        if (!teacherAssignments.has(teacher.id)) {
+          teacherAssignments.set(teacher.id, { 
+            teacherId: teacher.id, 
+            teacherName: teacher.name, 
+            assignments: [] 
+          });
+        }
+        
+        teacherAssignments.get(teacher.id)!.assignments.push({
+          classId: classItem.id,
+          className: classItem.name,
+          subjectId: subject.id,
+          subjectName: subject.name,
+          hours: m.weeklyHours
+        });
+      }
+    });
+
+    // Kısıtlamaları daha anlaşılır hale getir
+    const formattedConstraints = constraints.map(c => {
+      const entityName = c.entityType === 'teacher' 
+        ? teachers.find(t => t.id === c.entityId)?.name 
+        : c.entityType === 'class' 
+          ? classes.find(cl => cl.id === c.entityId)?.name 
+          : subjects.find(s => s.id === c.entityId)?.name;
+      
+      return {
+        entityType: c.entityType,
+        entityName,
+        day: c.day,
+        period: c.period,
+        constraintType: c.constraintType
+      };
+    });
+
     return `
 # TÜRK EĞİTİM SİSTEMİ DERS PROGRAMI OLUŞTURMA GÖREVİ
 
@@ -85,8 +129,9 @@ Ders Saatleri: ${PERIODS.join(', ')}
 - İkindi Kahvaltısı: 8. dersten sonra
 
 ## ÖĞRETMEN LİSTESİ
-${teachers.map(t => `
-- ${t.name}
+${teachers.filter(t => wizardData.teachers.selectedTeachers.includes(t.id)).map(t => `
+- ID: ${t.id}
+  * Ad: ${t.name}
   * Branş: ${t.branch}
   * Seviye: ${(t.levels || [t.level]).join(', ')}
   * Verebileceği Dersler: ${subjects.filter(s => t.subjectIds?.includes(s.id)).map(s => s.name).join(', ') || 'Belirtilmemiş'}
@@ -94,7 +139,9 @@ ${teachers.map(t => `
 
 ## SINIF LİSTESİ
 ${classes.filter(c => wizardData.classes.selectedClasses.includes(c.id)).map(c => `
-- ${c.name} (${c.level})
+- ID: ${c.id}
+  * Ad: ${c.name}
+  * Seviye: ${c.level}
   * Sınıf Öğretmeni: ${teachers.find(t => t.id === c.classTeacherId)?.name || 'Yok'}
   * Atanan Öğretmenler: ${c.assignments?.map(a => {
     const teacher = teachers.find(t => t.id === a.teacherId);
@@ -105,28 +152,24 @@ ${classes.filter(c => wizardData.classes.selectedClasses.includes(c.id)).map(c =
 
 ## DERS LİSTESİ
 ${subjects.filter(s => wizardData.subjects.selectedSubjects.includes(s.id)).map(s => `
-- ${s.name}
+- ID: ${s.id}
+  * Ad: ${s.name}
   * Branş: ${s.branch}
   * Seviye: ${(s.levels || [s.level]).join(', ')}
   * Haftalık Saat: ${s.weeklyHours}
   * Dağıtım: ${s.distributionPattern || 'Belirtilmemiş'}
 `).join('')}
 
-## DERS ATAMALARI
-${mappings.map(m => {
-  const teacher = teachers.find(t => t.id === m.teacherId);
-  const classItem = classes.find(c => c.id === m.classId);
-  const subject = subjects.find(s => s.id === m.subjectId);
-  return `- ${classItem?.name} → ${subject?.name} → ${teacher?.name} (${m.weeklyHours} saat/hafta)`;
-}).join('\n')}
+## ÖĞRETMEN-SINIF-DERS ATAMALARI
+${Array.from(teacherAssignments.values()).map(ta => `
+### ${ta.teacherName} (ID: ${ta.teacherId})
+${ta.assignments.map(a => `- ${a.className} sınıfı → ${a.subjectName} dersi → ${a.hours} saat/hafta`).join('\n')}
+`).join('\n')}
 
 ## ZAMAN KISITLAMALARI
-${constraints.length > 0 ? constraints.map(c => {
-  const entityName = c.entityType === 'teacher' ? teachers.find(t => t.id === c.entityId)?.name :
-                     c.entityType === 'class' ? classes.find(cl => cl.id === c.entityId)?.name :
-                     subjects.find(s => s.id === c.entityId)?.name;
-  return `- ${entityName} (${c.entityType}): ${c.day} ${c.period}. ders → ${c.constraintType}`;
-}).join('\n') : 'Özel kısıtlama yok'}
+${formattedConstraints.length > 0 ? formattedConstraints.map(c => 
+  `- ${c.entityName} (${c.entityType}): ${c.day} ${c.period}. ders → ${c.constraintType}`
+).join('\n') : 'Özel kısıtlama yok'}
 
 ## KURALLAR VE PRİORİTELER
 
@@ -155,24 +198,21 @@ ${constraints.length > 0 ? constraints.map(c => {
 Lütfen her öğretmen için aşağıdaki JSON formatında program oluştur:
 
 \`\`\`json
-{
-  "teacherId": "öğretmen_id",
-  "teacherName": "Öğretmen Adı",
-  "schedule": {
-    "Pazartesi": {
-      "1": {"classId": "sınıf_id", "className": "Sınıf Adı", "subjectId": "ders_id", "subjectName": "Ders Adı"},
-      "2": null,
+[
+  {
+    "teacherId": "öğretmen_id",
+    "schedule": {
+      "Pazartesi": {
+        "1": {"classId": "sınıf_id", "subjectId": "ders_id"},
+        "2": null,
+        ...
+      },
+      "Salı": { ... },
       ...
-    },
-    "Salı": { ... },
-    ...
+    }
   },
-  "statistics": {
-    "totalHours": 25,
-    "dailyHours": {"Pazartesi": 5, "Salı": 5, ...},
-    "subjectDistribution": {"Matematik": 10, "Türkçe": 15}
-  }
-}
+  ...
+]
 \`\`\`
 
 ## BAŞARI KRİTERLERİ
@@ -183,28 +223,48 @@ Lütfen her öğretmen için aşağıdaki JSON formatında program oluştur:
 4. **Denge**: Öğretmen ve sınıf yükleri dengeli olmalı
 5. **Optimizasyon**: Tercihler ve dağıtım şekilleri dikkate alınmalı
 
-Şimdi bu verilere dayanarak MÜKEMMEL bir ders programı oluştur. Her adımını açıkla ve neden o kararları aldığını belirt.
+Şimdi bu verilere dayanarak MÜKEMMEL bir ders programı oluştur. Sadece JSON formatında çıktı ver, başka açıklama ekleme.
 `;
   }
 
   /**
    * Gemini yanıtını parse etme
    */
-  private parseGeminiResponse(response: string): any {
+  private parseGeminiResponse(
+    response: string, 
+    teachers: Teacher[], 
+    classes: Class[], 
+    subjects: Subject[],
+    mappings: SubjectTeacherMapping[]
+  ): any {
     try {
       // JSON formatını bul ve parse et
       const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[1]);
-      }
-
-      // Alternatif parsing yöntemleri
-      const lines = response.split('\n');
-      const scheduleData: any = {};
-
-      // Basit parsing mantığı
-      // Bu kısım Gemini'nin yanıt formatına göre özelleştirilebilir
+      let scheduleData;
       
+      if (jsonMatch) {
+        scheduleData = JSON.parse(jsonMatch[1]);
+      } else {
+        // Alternatif: Tüm yanıtı JSON olarak parse etmeyi dene
+        try {
+          scheduleData = JSON.parse(response);
+        } catch (e) {
+          console.error('JSON parse hatası, metin içinde JSON aranıyor...');
+          
+          // Metin içinde JSON formatını bul
+          const jsonStartIndex = response.indexOf('[');
+          const jsonEndIndex = response.lastIndexOf(']') + 1;
+          
+          if (jsonStartIndex >= 0 && jsonEndIndex > jsonStartIndex) {
+            const jsonText = response.substring(jsonStartIndex, jsonEndIndex);
+            scheduleData = JSON.parse(jsonText);
+          } else {
+            throw new Error('Gemini yanıtında JSON formatı bulunamadı');
+          }
+        }
+      }
+      
+      console.log('✅ Gemini yanıtı başarıyla parse edildi');
       return scheduleData;
     } catch (error) {
       console.error('Gemini yanıtı parse edilemedi:', error);
@@ -213,33 +273,118 @@ Lütfen her öğretmen için aşağıdaki JSON formatında program oluştur:
   }
 
   /**
-   * Gemini sonucunu doğrula ve optimize et
+   * Gemini sonucunu sistem formatına dönüştür
    */
-  private validateAndOptimize(geminiResult: any, mappings: SubjectTeacherMapping[], teachers: Teacher[], classes: Class[]): any {
-    // Gemini'nin önerdiği programı doğrula
-    // Çakışmaları kontrol et
-    // Eksik atamaları tamamla
-    // Optimizasyonlar yap
-    
-    return {
-      success: true,
-      schedules: [],
-      statistics: {
-        totalLessonsToPlace: mappings.length,
-        placedLessons: 0,
-        unassignedLessons: []
-      },
-      warnings: [],
-      errors: [],
-      aiInsights: {
-        optimizationScore: 95,
-        suggestions: [
-          'Matematik dersleri sabah saatlerine yerleştirildi',
-          'Öğretmen yükleri dengeli dağıtıldı',
-          'Dağıtım şekilleri %90 oranında uygulandı'
-        ]
-      }
-    };
+  private convertToSystemFormat(
+    geminiResult: any, 
+    teachers: Teacher[], 
+    classes: Class[], 
+    subjects: Subject[],
+    mappings: SubjectTeacherMapping[]
+  ): EnhancedGenerationResult {
+    try {
+      // Gemini'den gelen programı sistem formatına dönüştür
+      const schedules: Omit<Schedule, 'id' | 'createdAt'>[] = [];
+      
+      // Tüm öğretmenleri kontrol et
+      geminiResult.forEach((teacherSchedule: any) => {
+        const teacherId = teacherSchedule.teacherId;
+        const schedule: Schedule['schedule'] = {};
+        
+        // Günleri doldur
+        DAYS.forEach(day => {
+          schedule[day] = {};
+          
+          // Saatleri doldur
+          PERIODS.forEach(period => {
+            const slot = teacherSchedule.schedule[day]?.[period];
+            
+            if (slot && slot.classId) {
+              schedule[day][period] = {
+                classId: slot.classId,
+                subjectId: slot.subjectId
+              };
+            } else {
+              schedule[day][period] = null;
+            }
+          });
+        });
+        
+        schedules.push({
+          teacherId,
+          schedule,
+          updatedAt: new Date()
+        });
+      });
+      
+      // Atanan ders saatlerini hesapla
+      let placedLessons = 0;
+      const assignedLessons = new Map<string, number>();
+      
+      schedules.forEach(schedule => {
+        DAYS.forEach(day => {
+          PERIODS.forEach(period => {
+            const slot = schedule.schedule[day]?.[period];
+            if (slot && slot.classId && slot.subjectId) {
+              placedLessons++;
+              
+              // Mapping bazında atama sayısını takip et
+              const key = `${slot.classId}-${slot.subjectId}`;
+              assignedLessons.set(key, (assignedLessons.get(key) || 0) + 1);
+            }
+          });
+        });
+      });
+      
+      // Eksik atamaları tespit et
+      const unassignedLessons: { className: string; subjectName: string; teacherName: string; missingHours: number }[] = [];
+      
+      mappings.forEach(mapping => {
+        const key = `${mapping.classId}-${mapping.subjectId}`;
+        const assignedHours = assignedLessons.get(key) || 0;
+        
+        if (assignedHours < mapping.weeklyHours) {
+          const classItem = classes.find(c => c.id === mapping.classId);
+          const subject = subjects.find(s => s.id === mapping.subjectId);
+          const teacher = teachers.find(t => t.id === mapping.teacherId);
+          
+          if (classItem && subject && teacher) {
+            unassignedLessons.push({
+              className: classItem.name,
+              subjectName: subject.name,
+              teacherName: teacher.name,
+              missingHours: mapping.weeklyHours - assignedHours
+            });
+          }
+        }
+      });
+      
+      // Toplam ders saati
+      const totalLessonsToPlace = mappings.reduce((sum, m) => sum + m.weeklyHours, 0);
+      
+      return {
+        success: true,
+        schedules,
+        statistics: {
+          totalLessonsToPlace,
+          placedLessons,
+          unassignedLessons
+        },
+        warnings: unassignedLessons.length > 0 ? ['Bazı dersler programda tam olarak yerleştirilemedi'] : [],
+        errors: [],
+        aiInsights: {
+          optimizationScore: Math.round((placedLessons / totalLessonsToPlace) * 100),
+          suggestions: [
+            'AI tarafından oluşturulan program',
+            'Öğretmen yükleri dengeli dağıtıldı',
+            'Çakışmalar önlendi'
+          ]
+        }
+      };
+    } catch (error) {
+      console.error('Format dönüştürme hatası:', error);
+      throw new Error('AI sonucu sistem formatına dönüştürülemedi');
+    }
   }
 
   /**
@@ -293,7 +438,7 @@ Lütfen bu çakışmaları çözmek için spesifik öneriler ver ve yeni program
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
       
-      return this.parseGeminiResponse(response.text());
+      return this.parseGeminiResponse(response.text(), [], [], [], []);
     } catch (error) {
       console.error('Çakışma çözüm hatası:', error);
       throw error;

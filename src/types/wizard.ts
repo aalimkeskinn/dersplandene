@@ -99,6 +99,14 @@ export interface EnhancedGenerationResult {
   };
   warnings: string[];
   errors: string[];
+  aiInsights?: {
+    optimizationScore?: number;
+    suggestions?: string[];
+    hybridApproach?: boolean;
+    aiCompletionRate?: number;
+    classicFallbackUsed?: boolean;
+    classicAlgorithmUsed?: boolean;
+  };
 }
 
 

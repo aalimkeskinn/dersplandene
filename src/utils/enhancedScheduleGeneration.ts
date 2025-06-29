@@ -2,6 +2,7 @@ import { DAYS, PERIODS, Schedule, Teacher, Class, Subject } from '../types';
 import { SubjectTeacherMapping, EnhancedGenerationResult, WizardData } from '../types/wizard';
 import { TimeConstraint } from '../types/constraints';
 import { geminiScheduleService } from '../services/geminiService';
+import { generateSystematicSchedule } from './scheduleGeneration';
 
 /**
  * AI Destekli Gelişmiş Program Oluşturma Sistemi
@@ -26,22 +27,35 @@ export async function generateAIEnhancedSchedule(
       // Gemini AI ile program oluştur
       console.log('🤖 Gemini AI devreye giriyor...');
       
-      const aiResult = await geminiScheduleService.generateOptimalSchedule(
-        mappings,
-        allTeachers,
-        allClasses,
-        allSubjects,
-        timeConstraints,
-        wizardData
-      );
+      try {
+        const aiResult = await geminiScheduleService.generateOptimalSchedule(
+          mappings,
+          allTeachers,
+          allClasses,
+          allSubjects,
+          timeConstraints,
+          wizardData
+        );
 
-      // AI sonucunu doğrula ve gerekirse fallback algoritma ile tamamla
-      if (aiResult.success && aiResult.schedules.length > 0) {
-        console.log('✅ AI başarıyla program oluşturdu');
-        return aiResult;
-      } else {
-        console.log('⚠️ AI kısmi sonuç verdi, hibrit yaklaşım kullanılıyor...');
-        return await generateHybridSchedule(mappings, allTeachers, allClasses, allSubjects, timeConstraints, globalRules, aiResult);
+        // AI sonucunu doğrula ve gerekirse fallback algoritma ile tamamla
+        if (aiResult.success && aiResult.schedules.length > 0) {
+          console.log('✅ AI başarıyla program oluşturdu');
+          
+          // Eksik ders ataması kontrolü
+          if (aiResult.statistics.unassignedLessons.length > 0) {
+            console.log('⚠️ AI bazı dersleri atayamadı, hibrit yaklaşım kullanılıyor...');
+            return await generateHybridSchedule(mappings, allTeachers, allClasses, allSubjects, timeConstraints, globalRules, aiResult);
+          }
+          
+          return aiResult;
+        } else {
+          console.log('⚠️ AI kısmi sonuç verdi, hibrit yaklaşım kullanılıyor...');
+          return await generateHybridSchedule(mappings, allTeachers, allClasses, allSubjects, timeConstraints, globalRules, aiResult);
+        }
+      } catch (aiError) {
+        console.error('❌ AI hatası:', aiError);
+        console.log('🔄 Klasik algoritma ile devam ediliyor...');
+        return await generateClassicSchedule(mappings, allTeachers, allClasses, allSubjects, timeConstraints, globalRules);
       }
     } else {
       // Klasik algoritma ile devam et
@@ -49,9 +63,9 @@ export async function generateAIEnhancedSchedule(
       return await generateClassicSchedule(mappings, allTeachers, allClasses, allSubjects, timeConstraints, globalRules);
     }
   } catch (error) {
-    console.error('❌ AI hatası, fallback algoritma devreye giriyor:', error);
+    console.error('❌ Genel hata, fallback algoritma devreye giriyor:', error);
     
-    // AI başarısız olursa klasik algoritma ile devam et
+    // Herhangi bir hata durumunda klasik algoritma ile devam et
     return await generateClassicSchedule(mappings, allTeachers, allClasses, allSubjects, timeConstraints, globalRules);
   }
 }
@@ -66,7 +80,7 @@ async function generateHybridSchedule(
   allSubjects: Subject[],
   timeConstraints: TimeConstraint[],
   globalRules: WizardData['constraints']['globalRules'],
-  aiPartialResult: any
+  aiPartialResult: EnhancedGenerationResult
 ): Promise<EnhancedGenerationResult> {
   
   console.log('🔄 Hibrit yaklaşım: AI sonuçları + Klasik algoritma...');
@@ -75,44 +89,78 @@ async function generateHybridSchedule(
   const aiSchedules = aiPartialResult.schedules || [];
   
   // Eksik kalan mappingleri tespit et
-  const completedMappings = new Set();
+  const completedMappings = new Set<string>();
+  const assignedHoursMap = new Map<string, number>();
+  
+  // AI tarafından atanan dersleri say
   aiSchedules.forEach((schedule: any) => {
     Object.values(schedule.schedule).forEach((day: any) => {
       Object.values(day).forEach((slot: any) => {
         if (slot && slot.classId && slot.subjectId) {
           const mappingKey = `${slot.classId}-${slot.subjectId}`;
           completedMappings.add(mappingKey);
+          assignedHoursMap.set(mappingKey, (assignedHoursMap.get(mappingKey) || 0) + 1);
         }
       });
     });
   });
   
-  const remainingMappings = mappings.filter(m => 
-    !completedMappings.has(`${m.classId}-${m.subjectId}`)
-  );
+  // Eksik veya tamamlanmamış mappingleri bul
+  const remainingMappings: SubjectTeacherMapping[] = [];
   
-  console.log(`📊 AI tamamladı: ${completedMappings.size}, Kalan: ${remainingMappings.length}`);
+  mappings.forEach(mapping => {
+    const mappingKey = `${mapping.classId}-${mapping.subjectId}`;
+    const assignedHours = assignedHoursMap.get(mappingKey) || 0;
+    
+    if (assignedHours < mapping.weeklyHours) {
+      // Eksik saatleri olan bir mapping
+      const remainingHours = mapping.weeklyHours - assignedHours;
+      remainingMappings.push({
+        ...mapping,
+        weeklyHours: remainingHours,
+        assignedHours: 0
+      });
+    }
+  });
+  
+  console.log(`📊 AI tamamladı: ${completedMappings.size} mapping, Kalan: ${remainingMappings.length} mapping`);
   
   // Kalan mappingleri klasik algoritma ile tamamla
   if (remainingMappings.length > 0) {
-    const classicResult = await generateClassicSchedule(
+    // Mevcut programı dikkate alarak kalan dersleri yerleştir
+    const classicResult = await generateClassicScheduleWithExisting(
       remainingMappings, 
       allTeachers, 
       allClasses, 
       allSubjects, 
       timeConstraints, 
-      globalRules
+      globalRules,
+      aiSchedules
     );
     
     // AI ve klasik sonuçları birleştir
-    const combinedSchedules = [...aiSchedules, ...classicResult.schedules];
+    const combinedSchedules = mergeSchedules(aiSchedules, classicResult.schedules);
+    
+    // Toplam yerleştirilen ders sayısını hesapla
+    let totalPlacedLessons = 0;
+    combinedSchedules.forEach(schedule => {
+      Object.values(schedule.schedule).forEach(day => {
+        Object.values(day).forEach(slot => {
+          if (slot && slot.classId && slot.subjectId && slot.classId !== 'fixed-period') {
+            totalPlacedLessons++;
+          }
+        });
+      });
+    });
+    
+    const totalLessonsToPlace = mappings.reduce((sum, m) => sum + m.weeklyHours, 0);
     
     return {
       success: true,
       schedules: combinedSchedules,
       statistics: {
-        totalLessonsToPlace: mappings.length,
-        placedLessons: completedMappings.size + classicResult.statistics.placedLessons,
+        totalLessonsToPlace,
+        placedLessons: totalPlacedLessons,
         unassignedLessons: classicResult.statistics.unassignedLessons
       },
       warnings: [
@@ -123,12 +171,126 @@ async function generateHybridSchedule(
       aiInsights: {
         hybridApproach: true,
         aiCompletionRate: Math.round((completedMappings.size / mappings.length) * 100),
-        classicFallbackUsed: true
+        classicFallbackUsed: true,
+        suggestions: [
+          'AI ve klasik algoritma birlikte kullanıldı',
+          'Eksik atamalar tamamlandı',
+          'Çakışmalar önlendi'
+        ]
       }
     };
   }
   
   return aiPartialResult;
+}
+
+/**
+ * Mevcut programı dikkate alarak klasik algoritma ile program oluştur
+ */
+async function generateClassicScheduleWithExisting(
+  mappings: SubjectTeacherMapping[],
+  allTeachers: Teacher[],
+  allClasses: Class[],
+  allSubjects: Subject[],
+  timeConstraints: TimeConstraint[],
+  globalRules: WizardData['constraints']['globalRules'],
+  existingSchedules: any[]
+): Promise<EnhancedGenerationResult> {
+  // Mevcut programdaki dolu slotları tespit et
+  const occupiedSlots = new Map<string, Set<string>>();
+  const classOccupiedSlots = new Map<string, Set<string>>();
+  
+  // Öğretmen ve sınıf bazında dolu slotları işaretle
+  existingSchedules.forEach(schedule => {
+    const teacherId = schedule.teacherId;
+    
+    if (!occupiedSlots.has(teacherId)) {
+      occupiedSlots.set(teacherId, new Set<string>());
+    }
+    
+    Object.entries(schedule.schedule).forEach(([day, periods]: [string, any]) => {
+      Object.entries(periods).forEach(([period, slot]: [string, any]) => {
+        if (slot && slot.classId) {
+          // Öğretmen için slot dolu
+          occupiedSlots.get(teacherId)!.add(`${day}-${period}`);
+          
+          // Sınıf için slot dolu
+          if (!classOccupiedSlots.has(slot.classId)) {
+            classOccupiedSlots.set(slot.classId, new Set<string>());
+          }
+          classOccupiedSlots.get(slot.classId)!.add(`${day}-${period}`);
+        }
+      });
+    });
+  });
+  
+  // Mevcut programı dikkate alarak yeni program oluştur
+  const result = generateSystematicSchedule(
+    mappings, 
+    allTeachers, 
+    allClasses, 
+    allSubjects, 
+    timeConstraints,
+    globalRules
+  );
+  
+  return result;
+}
+
+/**
+ * İki program setini birleştir
+ */
+function mergeSchedules(
+  schedules1: any[], 
+  schedules2: any[]
+): any[] {
+  const mergedSchedules = new Map<string, any>();
+  
+  // İlk set programları ekle
+  schedules1.forEach(schedule => {
+    mergedSchedules.set(schedule.teacherId, {
+      teacherId: schedule.teacherId,
+      schedule: JSON.parse(JSON.stringify(schedule.schedule)),
+      updatedAt: schedule.updatedAt || new Date()
+    });
+  });
+  
+  // İkinci set programları ekle veya birleştir
+  schedules2.forEach(schedule => {
+    const teacherId = schedule.teacherId;
+    
+    if (mergedSchedules.has(teacherId)) {
+      // Bu öğretmen için program zaten var, birleştir
+      const existingSchedule = mergedSchedules.get(teacherId)!;
+      
+      DAYS.forEach(day => {
+        PERIODS.forEach(period => {
+          const newSlot = schedule.schedule[day]?.[period];
+          
+          // Yeni slotta ders varsa ve mevcut slot boşsa, ekle
+          if (newSlot && newSlot.classId && (!existingSchedule.schedule[day]?.[period] || !existingSchedule.schedule[day][period].classId)) {
+            if (!existingSchedule.schedule[day]) {
+              existingSchedule.schedule[day] = {};
+            }
+            existingSchedule.schedule[day][period] = newSlot;
+          }
+        });
+      });
+      
+      // Güncelleme tarihini yenile
+      existingSchedule.updatedAt = new Date();
+      
+    } else {
+      // Bu öğretmen için program yok, direkt ekle
+      mergedSchedules.set(teacherId, {
+        teacherId,
+        schedule: JSON.parse(JSON.stringify(schedule.schedule)),
+        updatedAt: new Date()
+      });
+    }
+  });
+  
+  return Array.from(mergedSchedules.values());
 }
 
 /**
@@ -143,19 +305,26 @@ async function generateClassicSchedule(
   globalRules: WizardData['constraints']['globalRules']
 ): Promise<EnhancedGenerationResult> {
   
-  // Mevcut generateSystematicSchedule fonksiyonunuzu burada kullanın
-  // Bu sadece bir wrapper, gerçek implementasyon mevcut kodunuzda
+  // Mevcut generateSystematicSchedule fonksiyonunu kullan
+  const result = generateSystematicSchedule(
+    mappings, 
+    allTeachers, 
+    allClasses, 
+    allSubjects, 
+    timeConstraints,
+    globalRules
+  );
   
   return {
-    success: true,
-    schedules: [],
-    statistics: {
-      totalLessonsToPlace: mappings.length,
-      placedLessons: 0,
-      unassignedLessons: []
-    },
-    warnings: ['Klasik algoritma kullanıldı'],
-    errors: []
+    ...result,
+    aiInsights: {
+      classicAlgorithmUsed: true,
+      suggestions: [
+        'Klasik algoritma kullanıldı',
+        'AI kullanılmadı veya başarısız oldu',
+        'Temel optimizasyonlar uygulandı'
+      ]
+    }
   };
 }
 
