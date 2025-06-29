@@ -80,6 +80,38 @@ export const checkSlotConflict = (
     }
   }
 
+  // YENİ: Öğretmenin toplam haftalık ders saati kontrolü
+  if (mode === 'teacher') {
+    const teacher = teachers.find(t => t.id === currentEntityId);
+    if (teacher) {
+      // Öğretmenin mevcut toplam ders saatini hesapla
+      let totalHours = 0;
+      const teacherSchedule = allSchedules.find(s => s.teacherId === currentEntityId);
+      
+      if (teacherSchedule) {
+        DAYS.forEach(d => {
+          PERIODS.forEach(p => {
+            const slot = teacherSchedule.schedule[d]?.[p];
+            if (slot && slot.classId && slot.classId !== 'fixed-period') {
+              totalHours++;
+            }
+          });
+        });
+      }
+      
+      // Öğretmenin maksimum ders saati (totalWeeklyHours varsa onu kullan, yoksa 45)
+      const maxWeeklyHours = teacher.totalWeeklyHours || 45;
+      
+      // Eğer öğretmen zaten maksimum ders saatine ulaşmışsa, çakışma var
+      if (totalHours >= maxWeeklyHours) {
+        return {
+          hasConflict: true,
+          message: `${teacher.name} öğretmeni maksimum haftalık ders saatine (${maxWeeklyHours}) ulaştı`
+        };
+      }
+    }
+  }
+
   if (mode === 'teacher') {
     // FIXED: Teacher mode - Check if class is already assigned to another teacher at this time
     const conflictingSchedules = allSchedules.filter(schedule => {
@@ -278,6 +310,32 @@ export const validateScheduleWithConstraints = (
   if (!mode || !currentSchedule || !selectedId) {
     errors.push('Geçersiz program verisi');
     return { isValid: false, errors, warnings, constraintViolations };
+  }
+
+  // YENİ: Öğretmenin toplam haftalık ders saati kontrolü
+  if (mode === 'teacher') {
+    const teacher = teachers.find(t => t.id === selectedId);
+    if (teacher) {
+      // Öğretmenin mevcut toplam ders saatini hesapla
+      let totalHours = 0;
+      
+      DAYS.forEach(day => {
+        PERIODS.forEach(period => {
+          const slot = currentSchedule[day]?.[period];
+          if (slot && slot.classId && slot.classId !== 'fixed-period') {
+            totalHours++;
+          }
+        });
+      });
+      
+      // Öğretmenin maksimum ders saati (totalWeeklyHours varsa onu kullan, yoksa 45)
+      const maxWeeklyHours = teacher.totalWeeklyHours || 45;
+      
+      // Eğer öğretmen maksimum ders saatini aşmışsa, hata ver
+      if (totalHours > maxWeeklyHours) {
+        errors.push(`${teacher.name} öğretmeni maksimum haftalık ders saatini (${maxWeeklyHours}) aşıyor: ${totalHours} saat`);
+      }
+    }
   }
 
   // Check each slot for constraint violations (only "unavailable" blocks)

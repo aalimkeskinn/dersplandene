@@ -143,6 +143,7 @@ ${teachers.filter(t => wizardData.teachers.selectedTeachers.includes(t.id)).map(
   * Branş: ${t.branch}
   * Seviye: ${(t.levels || [t.level]).join(', ')}
   * Verebileceği Dersler: ${subjects.filter(s => t.subjectIds?.includes(s.id)).map(s => s.name).join(', ') || 'Belirtilmemiş'}
+  * Maksimum Haftalık Ders Saati: ${t.totalWeeklyHours || 45}
 `).join('')}
 
 ## SINIF LİSTESİ
@@ -196,6 +197,7 @@ ${formattedConstraints.length > 0 ? formattedConstraints.map(c =>
 6. **Yemek Saatleri**: Yemek saatlerinde (İlkokul/Anaokulu: 5. ders, Ortaokul: 6. ders) ders atanamaz
 7. **Günlük Ders Limiti**: Bir öğretmen, bir sınıfa günde en fazla 4 saat ders verebilir (sınıf öğretmenleri için)
 8. **Sınıf Ders Saati**: Her sınıf 45 saatlik ders ile doldurulmalıdır
+9. **Öğretmen Haftalık Ders Limiti**: Her öğretmenin maksimum haftalık ders saati aşılmamalıdır (varsayılan: 45 saat)
 
 ### OPTİMİZASYON PRİORİTELERİ:
 1. **Dağıtım Şekilleri**: Derslerin belirtilen dağıtım şekillerine uygun yerleştirilmesi
@@ -219,6 +221,7 @@ ${formattedConstraints.length > 0 ? formattedConstraints.map(c =>
 5. **Blok Dersler**: Sınıf öğretmenlerinin dersleri mümkünse blok halinde (2 saat) yerleştirilmelidir
 6. **Günlük Limit**: Sınıf öğretmeni bir günde en fazla 4 saat ders verebilir (2 farklı ders, 2'şer saat)
 7. **Tamamlama Önceliği**: Sınıf öğretmeninin dersleri tamamlanmadan diğer dersler yerleştirilmemelidir
+8. **Haftalık Limit**: Her öğretmenin maksimum haftalık ders saati aşılmamalıdır (öğretmen bazında değişebilir)
 
 ## ÇIKTI FORMATI
 
@@ -252,6 +255,7 @@ Lütfen her öğretmen için aşağıdaki JSON formatında program oluştur:
 6. **Sınıf Ders Saati**: Her sınıf 45 saatlik ders ile doldurulmalı
 7. **Günlük Limit**: Bir öğretmen, bir sınıfa günde en fazla 4 saat ders verebilir (sınıf öğretmenleri için)
 8. **Sınıf Öğretmeni Önceliği**: Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirilmeli
+9. **Öğretmen Haftalık Ders Limiti**: Her öğretmenin maksimum haftalık ders saati aşılmamalıdır
 
 ## EKSİK DERS ATAMASI DURUMUNDA
 
@@ -528,6 +532,35 @@ Eğer tüm dersleri yerleştiremezsen, eksik kalan dersler için şu bilgileri v
         });
       });
       
+      // Öğretmenlerin haftalık ders saati limiti kontrolü
+      const teacherWeeklyHoursViolations: string[] = [];
+      schedules.forEach(schedule => {
+        const teacherId = schedule.teacherId;
+        const teacher = teachers.find(t => t.id === teacherId);
+        if (!teacher) return;
+        
+        // Öğretmenin haftalık toplam ders saatini hesapla
+        let totalHours = 0;
+        DAYS.forEach(day => {
+          PERIODS.forEach(period => {
+            const slot = schedule.schedule[day]?.[period];
+            if (slot && slot.classId && slot.classId !== 'fixed-period') {
+              totalHours++;
+            }
+          });
+        });
+        
+        // Öğretmenin maksimum ders saati (totalWeeklyHours varsa onu kullan, yoksa 45)
+        const maxWeeklyHours = teacher.totalWeeklyHours || 45;
+        
+        // Eğer öğretmen maksimum ders saatini aşmışsa, uyarı ekle
+        if (totalHours > maxWeeklyHours) {
+          teacherWeeklyHoursViolations.push(
+            `${teacher.name} öğretmeni maksimum haftalık ders saatini (${maxWeeklyHours}) aşıyor: ${totalHours} saat`
+          );
+        }
+      });
+      
       // AI önerileri oluştur
       const suggestions: string[] = [
         'AI tarafından oluşturulan program',
@@ -537,7 +570,8 @@ Eğer tüm dersleri yerleştiremezsen, eksik kalan dersler için şu bilgileri v
         'Yemek saatlerine ders atanmadı',
         'Bir öğretmen, bir sınıfa günde en fazla 4 saat ders verecek şekilde planlandı (sınıf öğretmenleri için)',
         'Her sınıf için 45 saatlik ders hedeflendi',
-        'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirildi'
+        'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirildi',
+        'Öğretmenlerin haftalık maksimum ders saati limitleri dikkate alındı'
       ];
       
       // Eksik atamalar için öneriler
@@ -562,7 +596,8 @@ Eğer tüm dersleri yerleştiremezsen, eksik kalan dersler için şu bilgileri v
         warnings: [
           ...unassignedLessons.length > 0 ? ['Bazı dersler programda tam olarak yerleştirilemedi'] : [],
           ...classWarnings,
-          ...teacherClassDailyHoursViolations
+          ...teacherClassDailyHoursViolations,
+          ...teacherWeeklyHoursViolations
         ],
         errors: [],
         aiInsights: {
@@ -595,6 +630,7 @@ Lütfen şu konularda öneriler ver:
 6. Bir öğretmenin aynı sınıfa günde en fazla 4 saat ders vermesi kuralına uyum (sınıf öğretmenleri için)
 7. Her sınıfın 45 saatlik ders ile doldurulması hedefine uyum
 8. Sınıf öğretmenlerinin derslerinin önceliklendirilmesi
+9. Öğretmenlerin haftalık maksimum ders saati limitlerinin aşılmaması
 
 Önerilerini madde madde listele.
 `;
@@ -632,6 +668,7 @@ KURALLAR:
 5. Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirilmelidir (İlkokul ve Anaokulu için)
 6. Temel dersler (Türkçe, Matematik) sabah saatlerinde olmalıdır
 7. Sınıf öğretmeni bir günde en fazla 2 farklı ders verebilir, her birinden 2 saat olmak üzere
+8. Öğretmenlerin haftalık maksimum ders saati limitleri aşılmamalıdır
 
 Lütfen bu çakışmaları çözmek için spesifik öneriler ver ve yeni program düzenlemesi öner.
 `;

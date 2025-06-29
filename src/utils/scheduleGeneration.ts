@@ -699,7 +699,9 @@ export function generateSystematicSchedule(
 
     // DÜZELTME: Öğretmenin maksimum ders saati kontrolü
     const currentTeacherTotalHours = Array.from(teacherLevelActualHours.get(teacherId)?.values() || []).reduce((sum, hours) => sum + hours, 0);
-    const teacherMaxHours = 45; // Haftalık maksimum 45 saat
+    
+    // YENİ: Öğretmenin totalWeeklyHours değerini kontrol et (varsa)
+    const teacherMaxHours = teacher.totalWeeklyHours || 45; // Öğretmenin belirtilen maksimum saati veya varsayılan 45
     
     if (currentTeacherTotalHours + blockLength > teacherMaxHours) {
       console.warn(`UYARI: ${teacher.name} öğretmeni maksimum ders saatine (${teacherMaxHours}) ulaştı. Şu anki: ${currentTeacherTotalHours}, Eklenecek: ${blockLength}`);
