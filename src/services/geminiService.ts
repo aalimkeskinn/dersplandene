@@ -11,15 +11,7 @@ class GeminiScheduleService {
   constructor() {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
     this.genAI = new GoogleGenerativeAI(apiKey);
-    this.model = this.genAI.getGenerativeModel({ 
-      model: 'gemini-1.5-pro',
-      generationConfig: {
-        maxOutputTokens: 8192,
-        temperature: 0.1,
-        topP: 0.8,
-        topK: 40
-      }
-    });
+    this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
   }
 
   /**

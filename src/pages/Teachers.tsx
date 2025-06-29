@@ -98,7 +98,7 @@ const Teachers = () => {
     return hours;
   };
   
-  // DÜZELTME: Kulüp derslerini özel olarak kontrol et - HATA DÜZELTME
+  // DÜZELTME: Kulüp derslerini özel olarak kontrol et
   const getTeacherClubHours = (teacherId: string): number => {
     const teacherSchedule = schedules.find(s => s.teacherId === teacherId);
     if (!teacherSchedule) return 0;
@@ -114,38 +114,28 @@ const Teachers = () => {
     const thursdaySlots = teacherSchedule.schedule['Perşembe'] || {};
     
     // İlkokul kulüp saatlerini kontrol et
-    const ilkokulClassesSet = new Set<string>();
-    
     ilkokulClubSlots.forEach(period => {
       const slot = thursdaySlots[period];
       if (slot && slot.classId && slot.classId !== 'fixed-period') {
         // Sınıfın seviyesini kontrol et
         const classItem = classes.find(c => c.id === slot.classId);
         if (classItem && (classItem.level === 'İlkokul' || classItem.level === 'Anaokulu')) {
-          ilkokulClassesSet.add(slot.classId);
+          clubHours++;
         }
       }
     });
     
-    // Her sınıf için 2 saat ekle (blok ders)
-    clubHours += ilkokulClassesSet.size * 2;
-    
     // Ortaokul kulüp saatlerini kontrol et
-    const ortaokulClassesSet = new Set<string>();
-    
     ortaokulClubSlots.forEach(period => {
       const slot = thursdaySlots[period];
       if (slot && slot.classId && slot.classId !== 'fixed-period') {
         // Sınıfın seviyesini kontrol et
         const classItem = classes.find(c => c.id === slot.classId);
         if (classItem && classItem.level === 'Ortaokul') {
-          ortaokulClassesSet.add(slot.classId);
+          clubHours++;
         }
       }
     });
-    
-    // Her sınıf için 2 saat ekle (blok ders)
-    clubHours += ortaokulClassesSet.size * 2;
     
     return clubHours;
   };
