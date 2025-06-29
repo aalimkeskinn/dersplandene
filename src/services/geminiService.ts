@@ -310,7 +310,7 @@ Lütfen her öğretmen için aşağıdaki JSON formatında program oluştur:
       
       // Sonucun array olduğunu kontrol et
       if (!Array.isArray(scheduleData)) {
-        console.log('⚠️ Sonuç array değil, array'e çevriliyor...');
+        console.log('⚠️ Sonuç array değil, array\'e çevriliyor...');
         scheduleData = [scheduleData];
       }
       
