@@ -35,13 +35,6 @@ export async function generateAIEnhancedSchedule(
       const classItem = allClasses.find(c => c.id === mapping.classId);
       
       if (subject && subject.name.toUpperCase().includes('KULÜP') && classItem) {
-        // Bu ders için özel kısıtlama var mı kontrol et
-        const hasSpecificConstraints = enhancedConstraints.some(constraint => 
-          (constraint.entityType === 'subject' && constraint.entityId === subject.id) || 
-          (constraint.entityType === 'teacher' && constraint.entityId === mapping.teacherId) ||
-          (constraint.entityType === 'class' && constraint.entityId === mapping.classId)
-        );
-        
         // Kulüp derslerinin haftalık saati 2 olmalı
         if (mapping.weeklyHours !== 2) {
           console.log(`⚠️ Kulüp dersi saati düzeltiliyor: ${subject.name} (${classItem.name}) - ${mapping.weeklyHours} → 2 saat`);
