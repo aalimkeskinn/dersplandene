@@ -3,6 +3,7 @@ import { SubjectTeacherMapping, EnhancedGenerationResult, WizardData } from '../
 import { TimeConstraint } from '../types/constraints';
 import { geminiScheduleService } from '../services/geminiService';
 import { generateSystematicSchedule } from './scheduleGeneration';
+import { applyFixedClubConstraints } from './fixedConstraints';
 
 /**
  * AI Destekli Gelişmiş Program Oluşturma Sistemi
@@ -23,6 +24,10 @@ export async function generateAIEnhancedSchedule(
   console.log('🚀 AI Destekli Program Oluşturma Başlatıldı...');
 
   try {
+    // KULÜP DERSLERİ İÇİN SABİT KISITLAMALARI UYGULA
+    const enhancedConstraints = applyFixedClubConstraints(allSubjects, timeConstraints);
+    console.log(`✅ Sabit kısıtlamalar uygulandı: ${enhancedConstraints.length} kısıtlama (önceki: ${timeConstraints.length})`);
+    
     if (useAI) {
       // Gemini AI ile program oluştur
       console.log('🤖 Gemini AI devreye giriyor...');
@@ -33,7 +38,7 @@ export async function generateAIEnhancedSchedule(
           allTeachers,
           allClasses,
           allSubjects,
-          timeConstraints,
+          enhancedConstraints, // Sabit kısıtlamaları içeren güncellenmiş liste
           wizardData
         );
 
@@ -44,23 +49,23 @@ export async function generateAIEnhancedSchedule(
           // Eksik ders ataması kontrolü
           if (aiResult.statistics.unassignedLessons.length > 0) {
             console.log('⚠️ AI bazı dersleri atayamadı, hibrit yaklaşım kullanılıyor...');
-            return await generateHybridSchedule(mappings, allTeachers, allClasses, allSubjects, timeConstraints, globalRules, aiResult);
+            return await generateHybridSchedule(mappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules, aiResult);
           }
           
           return aiResult;
         } else {
           console.log('⚠️ AI kısmi sonuç verdi, hibrit yaklaşım kullanılıyor...');
-          return await generateHybridSchedule(mappings, allTeachers, allClasses, allSubjects, timeConstraints, globalRules, aiResult);
+          return await generateHybridSchedule(mappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules, aiResult);
         }
       } catch (aiError) {
         console.error('❌ AI hatası:', aiError);
         console.log('🔄 Klasik algoritma ile devam ediliyor...');
-        return await generateClassicSchedule(mappings, allTeachers, allClasses, allSubjects, timeConstraints, globalRules);
+        return await generateClassicSchedule(mappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules);
       }
     } else {
       // Klasik algoritma ile devam et
       console.log('🔧 Klasik algoritma kullanılıyor...');
-      return await generateClassicSchedule(mappings, allTeachers, allClasses, allSubjects, timeConstraints, globalRules);
+      return await generateClassicSchedule(mappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules);
     }
   } catch (error) {
     console.error('❌ Genel hata, fallback algoritma devreye giriyor:', error);

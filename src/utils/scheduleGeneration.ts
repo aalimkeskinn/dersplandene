@@ -10,7 +10,7 @@ function getEntityLevel(entity: Teacher | Class): 'Anaokulu' | 'İlkokul' | 'Ort
 }
 
 /**
- * "Öncelikli Kısıtlı Görev" Algoritması (v39 - Final)
+ * "Öncelikli Kısıtlı Görev" Algoritması (v40 - Sabit Kulüp Dersleri)
  * 1. "ADE", "KULÜP" gibi özel dersleri tespit eder.
  * 2. Önce bu özel dersleri, sadece onlara tanımlanmış zaman kısıtlamalarına göre yerleştirir.
  * 3. Ardından kalan normal dersleri, boş kalan slotlara en verimli şekilde dağıtır.
@@ -25,7 +25,7 @@ export function generateSystematicSchedule(
 ): EnhancedGenerationResult {
   
   const startTime = Date.now();
-  console.log('🚀 Program oluşturma başlatıldı (v39 - Öncelikli Kısıtlı Görev)...');
+  console.log('🚀 Program oluşturma başlatıldı (v40 - Sabit Kulüp Dersleri)...');
 
   // --- AŞAMA 1: VERİ MATRİSLERİNİ VE GÖREVLERİ HAZIRLA ---
   const classScheduleGrids: { [classId: string]: Schedule['schedule'] } = {};
@@ -69,7 +69,7 @@ export function generateSystematicSchedule(
   const selectedTeacherIds = new Set(mappings.map(m => m.teacherId));
   selectedTeacherIds.forEach(teacherId => { teacherAvailability.set(teacherId, new Set<string>()); });
   
-  type PlacementTask = { mapping: SubjectTeacherMapping; blockLength: number; taskId: string; classLevel: 'Anaokulu' | 'İlkokul' | 'Ortaokul'; isPlaced: boolean; };
+  type PlacementTask = { mapping: SubjectTeacherMapping; blockLength: number; taskId: string; classLevel: 'Anaokulu' | 'İlkokul' | 'Ortaokul'; isPlaced: boolean; isSpecial: boolean; };
   
   let specialTasks: PlacementTask[] = [];
   let normalTasks: PlacementTask[] = [];
@@ -80,24 +80,76 @@ export function generateSystematicSchedule(
     const classLevel = getEntityLevel(classItem);
     const distribution = mapping.distribution || [];
     
-    const isSpecial = subject.name.toUpperCase().includes('KULÜP') || subject.name.toUpperCase().includes('ADE');
+    // KULÜP DERSLERİ İÇİN ÖZEL KONTROL
+    const isKulupDersi = subject.name.toUpperCase().includes('KULÜP');
+    const isADEDersi = subject.name.toUpperCase().includes('ADE');
+    const isSpecial = isKulupDersi || isADEDersi;
     const hasSpecificConstraints = timeConstraints.some(c => c.entityType === 'subject' && c.entityId === subject.id);
 
-    if (isSpecial && hasSpecificConstraints) {
-        for(let i=0; i<mapping.weeklyHours; i++){
-            specialTasks.push({ mapping, blockLength: 1, taskId: `${mapping.id}-special-${i}`, classLevel, isPlaced: false });
-        }
-    } else {
-        let hoursLeft = mapping.weeklyHours;
-        if (distribution.length > 0 && globalRules.useDistributionPatterns) {
-            distribution.forEach((block, index) => {
-                normalTasks.push({ mapping, blockLength: block, taskId: `${mapping.id}-dist-${index}`, classLevel, isPlaced: false });
-                hoursLeft -= block;
-            });
-        }
-        for (let i = 0; i < hoursLeft; i++) {
-            normalTasks.push({ mapping, blockLength: 1, taskId: `${mapping.id}-single-${i}`, classLevel, isPlaced: false });
-        }
+    // Kulüp dersleri için özel işlem
+    if (isKulupDersi) {
+      // İlkokul kulüp dersleri Perşembe 9-10. ders saatlerinde
+      if (classLevel === 'İlkokul') {
+        specialTasks.push({ 
+          mapping, 
+          blockLength: 2, 
+          taskId: `${mapping.id}-kulup-ilkokul`, 
+          classLevel, 
+          isPlaced: false,
+          isSpecial: true
+        });
+      }
+      // Ortaokul kulüp dersleri Perşembe 7-8. ders saatlerinde
+      else if (classLevel === 'Ortaokul') {
+        specialTasks.push({ 
+          mapping, 
+          blockLength: 2, 
+          taskId: `${mapping.id}-kulup-ortaokul`, 
+          classLevel, 
+          isPlaced: false,
+          isSpecial: true
+        });
+      }
+    }
+    // ADE dersleri için özel işlem
+    else if (isADEDersi && hasSpecificConstraints) {
+      for(let i=0; i<mapping.weeklyHours; i++){
+        specialTasks.push({ 
+          mapping, 
+          blockLength: 1, 
+          taskId: `${mapping.id}-ade-${i}`, 
+          classLevel, 
+          isPlaced: false,
+          isSpecial: true
+        });
+      }
+    }
+    // Normal dersler
+    else {
+      let hoursLeft = mapping.weeklyHours;
+      if (distribution.length > 0 && globalRules.useDistributionPatterns) {
+        distribution.forEach((block, index) => {
+          normalTasks.push({ 
+            mapping, 
+            blockLength: block, 
+            taskId: `${mapping.id}-dist-${index}`, 
+            classLevel, 
+            isPlaced: false,
+            isSpecial: false
+          });
+          hoursLeft -= block;
+        });
+      }
+      for (let i = 0; i < hoursLeft; i++) {
+        normalTasks.push({ 
+          mapping, 
+          blockLength: 1, 
+          taskId: `${mapping.id}-single-${i}`, 
+          classLevel, 
+          isPlaced: false,
+          isSpecial: false
+        });
+      }
     }
   });
   
@@ -106,32 +158,69 @@ export function generateSystematicSchedule(
   specialTasks.sort((a,b) => LEVEL_ORDER[a.classLevel] - LEVEL_ORDER[b.classLevel]);
 
   for (const task of specialTasks) {
-    const { mapping, classLevel } = task;
+    const { mapping, classLevel, isSpecial } = task;
     const { teacherId, classId, subjectId } = mapping;
     
-    const preferredSlots: {day: string, period: string}[] = [];
-    timeConstraints.forEach(c => {
-        if(c.entityType === 'subject' && c.entityId === subjectId && c.constraintType === 'preferred') {
-            preferredSlots.push({day: c.day, period: c.period});
+    // Kulüp dersleri için sabit zaman dilimlerini belirle
+    let fixedSlots: {day: string, period: string}[] = [];
+    
+    if (task.mapping.subjectId.includes('kulup') || task.mapping.subjectId.includes('KULÜP') || 
+        (allSubjects.find(s => s.id === task.mapping.subjectId)?.name.toUpperCase().includes('KULÜP'))) {
+      
+      if (classLevel === 'İlkokul') {
+        // İlkokul kulüp dersleri: Perşembe 9-10. ders
+        fixedSlots = [
+          { day: 'Perşembe', period: '9' },
+          { day: 'Perşembe', period: '10' }
+        ];
+      } else if (classLevel === 'Ortaokul') {
+        // Ortaokul kulüp dersleri: Perşembe 7-8. ders
+        fixedSlots = [
+          { day: 'Perşembe', period: '7' },
+          { day: 'Perşembe', period: '8' }
+        ];
+      }
+    } else {
+      // ADE dersleri veya diğer özel dersler için kısıtlamaları kontrol et
+      timeConstraints.forEach(c => {
+        if (c.entityType === 'subject' && c.entityId === subjectId && c.constraintType === 'preferred') {
+          fixedSlots.push({ day: c.day, period: c.period });
         }
-    });
+      });
+    }
+
+    // Eğer sabit slotlar belirlenmediyse, tüm slotları dene
+    if (fixedSlots.length === 0) {
+      DAYS.forEach(day => {
+        PERIODS.forEach(period => {
+          fixedSlots.push({ day, period });
+        });
+      });
+    }
 
     let placed = false;
-    for (const slot of preferredSlots) {
-        const slotKey = `${slot.day}-${slot.period}`;
-        const isTeacherUnavailable = constraintMap.get(`teacher-${teacherId}-${slot.day}-${slot.period}`) === 'unavailable';
-        const isAvailable = !teacherAvailability.get(teacherId)?.has(slotKey) && !classAvailability.get(classId)?.has(slotKey) && !isTeacherUnavailable;
-        
-        if (isAvailable) {
-            classScheduleGrids[classId][slot.day][slot.period] = { subjectId, teacherId, classId, isFixed: false };
-            teacherAvailability.get(teacherId)!.add(slotKey);
-            classAvailability.get(classId)!.add(slotKey);
-            const currentHours = teacherLevelActualHours.get(teacherId)?.get(classLevel) || 0;
-            teacherLevelActualHours.get(teacherId)?.set(classLevel, currentHours + 1);
-            placed = true;
-            task.isPlaced = true;
-            break;
-        }
+    for (const slot of fixedSlots) {
+      const slotKey = `${slot.day}-${slot.period}`;
+      const isTeacherUnavailable = constraintMap.get(`teacher-${teacherId}-${slot.day}-${slot.period}`) === 'unavailable';
+      const isAvailable = !teacherAvailability.get(teacherId)?.has(slotKey) && 
+                          !classAvailability.get(classId)?.has(slotKey) && 
+                          !isTeacherUnavailable;
+      
+      if (isAvailable) {
+        classScheduleGrids[classId][slot.day][slot.period] = { 
+          subjectId, 
+          teacherId, 
+          classId, 
+          isFixed: false 
+        };
+        teacherAvailability.get(teacherId)!.add(slotKey);
+        classAvailability.get(classId)!.add(slotKey);
+        const currentHours = teacherLevelActualHours.get(teacherId)?.get(classLevel) || 0;
+        teacherLevelActualHours.get(teacherId)?.set(classLevel, currentHours + 1);
+        placed = true;
+        task.isPlaced = true;
+        break;
+      }
     }
   }
 
