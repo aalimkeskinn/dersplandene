@@ -10,7 +10,7 @@ function getEntityLevel(entity: Teacher | Class): 'Anaokulu' | 'İlkokul' | 'Ort
 }
 
 /**
- * "Öncelikli Kısıtlı Görev" Algoritması (v41 - Kulüp Dersleri Düzeltmesi)
+ * "Öncelikli Kısıtlı Görev" Algoritması (v40 - Sabit Kulüp Dersleri)
  * 1. "ADE", "KULÜP" gibi özel dersleri tespit eder.
  * 2. Önce bu özel dersleri, sadece onlara tanımlanmış zaman kısıtlamalarına göre yerleştirir.
  * 3. Ardından kalan normal dersleri, boş kalan slotlara en verimli şekilde dağıtır.
@@ -25,7 +25,7 @@ export function generateSystematicSchedule(
 ): EnhancedGenerationResult {
   
   const startTime = Date.now();
-  console.log('🚀 Program oluşturma başlatıldı (v41 - Kulüp Dersleri Düzeltmesi)...');
+  console.log('🚀 Program oluşturma başlatıldı (v40 - Sabit Kulüp Dersleri)...');
 
   // --- AŞAMA 1: VERİ MATRİSLERİNİ VE GÖREVLERİ HAZIRLA ---
   const classScheduleGrids: { [classId: string]: Schedule['schedule'] } = {};
@@ -90,10 +90,9 @@ export function generateSystematicSchedule(
     if (isKulupDersi) {
       // İlkokul kulüp dersleri Perşembe 9-10. ders saatlerinde
       if (classLevel === 'İlkokul') {
-        // Kulüp dersi için tek bir blok görev oluştur (2 saat)
         specialTasks.push({ 
           mapping, 
-          blockLength: 2, // 2 saatlik blok
+          blockLength: 2, 
           taskId: `${mapping.id}-kulup-ilkokul`, 
           classLevel, 
           isPlaced: false,
@@ -102,10 +101,9 @@ export function generateSystematicSchedule(
       }
       // Ortaokul kulüp dersleri Perşembe 7-8. ders saatlerinde
       else if (classLevel === 'Ortaokul') {
-        // Kulüp dersi için tek bir blok görev oluştur (2 saat)
         specialTasks.push({ 
           mapping, 
-          blockLength: 2, // 2 saatlik blok
+          blockLength: 2, 
           taskId: `${mapping.id}-kulup-ortaokul`, 
           classLevel, 
           isPlaced: false,
@@ -160,14 +158,15 @@ export function generateSystematicSchedule(
   specialTasks.sort((a,b) => LEVEL_ORDER[a.classLevel] - LEVEL_ORDER[b.classLevel]);
 
   for (const task of specialTasks) {
-    const { mapping, classLevel, isSpecial, blockLength } = task;
+    const { mapping, classLevel, isSpecial } = task;
     const { teacherId, classId, subjectId } = mapping;
-    const subject = allSubjects.find(s => s.id === subjectId);
     
     // Kulüp dersleri için sabit zaman dilimlerini belirle
     let fixedSlots: {day: string, period: string}[] = [];
     
-    if (subject && subject.name.toUpperCase().includes('KULÜP')) {
+    if (task.mapping.subjectId.includes('kulup') || task.mapping.subjectId.includes('KULÜP') || 
+        (allSubjects.find(s => s.id === task.mapping.subjectId)?.name.toUpperCase().includes('KULÜP'))) {
+      
       if (classLevel === 'İlkokul') {
         // İlkokul kulüp dersleri: Perşembe 9-10. ders
         fixedSlots = [
@@ -181,7 +180,7 @@ export function generateSystematicSchedule(
           { day: 'Perşembe', period: '8' }
         ];
       }
-    } else if (isSpecial && hasSpecificConstraints) {
+    } else {
       // ADE dersleri veya diğer özel dersler için kısıtlamaları kontrol et
       timeConstraints.forEach(c => {
         if (c.entityType === 'subject' && c.entityId === subjectId && c.constraintType === 'preferred') {
@@ -199,92 +198,28 @@ export function generateSystematicSchedule(
       });
     }
 
-    // Kulüp dersleri için özel yerleştirme (2 saatlik blok)
-    if (subject && subject.name.toUpperCase().includes('KULÜP') && blockLength === 2) {
-      let placed = false;
+    let placed = false;
+    for (const slot of fixedSlots) {
+      const slotKey = `${slot.day}-${slot.period}`;
+      const isTeacherUnavailable = constraintMap.get(`teacher-${teacherId}-${slot.day}-${slot.period}`) === 'unavailable';
+      const isAvailable = !teacherAvailability.get(teacherId)?.has(slotKey) && 
+                          !classAvailability.get(classId)?.has(slotKey) && 
+                          !isTeacherUnavailable;
       
-      // Kulüp dersleri için sabit zaman dilimlerini kullan
-      if (fixedSlots.length >= 2) {
-        // İlk iki slotu al (sıralı olduğunu varsayıyoruz)
-        const slot1 = fixedSlots[0];
-        const slot2 = fixedSlots[1];
-        
-        const slotKey1 = `${slot1.day}-${slot1.period}`;
-        const slotKey2 = `${slot2.day}-${slot2.period}`;
-        
-        const isTeacherUnavailable1 = constraintMap.get(`teacher-${teacherId}-${slot1.day}-${slot1.period}`) === 'unavailable';
-        const isTeacherUnavailable2 = constraintMap.get(`teacher-${teacherId}-${slot2.day}-${slot2.period}`) === 'unavailable';
-        
-        const isAvailable1 = !teacherAvailability.get(teacherId)?.has(slotKey1) && 
-                            !classAvailability.get(classId)?.has(slotKey1) && 
-                            !isTeacherUnavailable1;
-                            
-        const isAvailable2 = !teacherAvailability.get(teacherId)?.has(slotKey2) && 
-                            !classAvailability.get(classId)?.has(slotKey2) && 
-                            !isTeacherUnavailable2;
-        
-        // Her iki slot da müsaitse, yerleştir
-        if (isAvailable1 && isAvailable2) {
-          // İlk slot
-          classScheduleGrids[classId][slot1.day][slot1.period] = { 
-            subjectId, 
-            teacherId, 
-            classId, 
-            isFixed: false 
-          };
-          teacherAvailability.get(teacherId)!.add(slotKey1);
-          classAvailability.get(classId)!.add(slotKey1);
-          
-          // İkinci slot
-          classScheduleGrids[classId][slot2.day][slot2.period] = { 
-            subjectId, 
-            teacherId, 
-            classId, 
-            isFixed: false 
-          };
-          teacherAvailability.get(teacherId)!.add(slotKey2);
-          classAvailability.get(classId)!.add(slotKey2);
-          
-          // Öğretmen saat sayacını güncelle (2 saat)
-          const currentHours = teacherLevelActualHours.get(teacherId)?.get(classLevel) || 0;
-          teacherLevelActualHours.get(teacherId)?.set(classLevel, currentHours + 2);
-          
-          placed = true;
-          task.isPlaced = true;
-          
-          console.log(`✅ Kulüp dersi yerleştirildi: ${subject.name}, ${slot1.day} ${slot1.period}-${slot2.period}`);
-        }
-      }
-      
-      if (!placed) {
-        console.log(`⚠️ Kulüp dersi yerleştirilemedi: ${subject.name}`);
-      }
-    } 
-    // Diğer özel dersler için normal yerleştirme
-    else {
-      let placed = false;
-      for (const slot of fixedSlots) {
-        const slotKey = `${slot.day}-${slot.period}`;
-        const isTeacherUnavailable = constraintMap.get(`teacher-${teacherId}-${slot.day}-${slot.period}`) === 'unavailable';
-        const isAvailable = !teacherAvailability.get(teacherId)?.has(slotKey) && 
-                            !classAvailability.get(classId)?.has(slotKey) && 
-                            !isTeacherUnavailable;
-        
-        if (isAvailable) {
-          classScheduleGrids[classId][slot.day][slot.period] = { 
-            subjectId, 
-            teacherId, 
-            classId, 
-            isFixed: false 
-          };
-          teacherAvailability.get(teacherId)!.add(slotKey);
-          classAvailability.get(classId)!.add(slotKey);
-          const currentHours = teacherLevelActualHours.get(teacherId)?.get(classLevel) || 0;
-          teacherLevelActualHours.get(teacherId)?.set(classLevel, currentHours + 1);
-          placed = true;
-          task.isPlaced = true;
-          break;
-        }
+      if (isAvailable) {
+        classScheduleGrids[classId][slot.day][slot.period] = { 
+          subjectId, 
+          teacherId, 
+          classId, 
+          isFixed: false 
+        };
+        teacherAvailability.get(teacherId)!.add(slotKey);
+        classAvailability.get(classId)!.add(slotKey);
+        const currentHours = teacherLevelActualHours.get(teacherId)?.get(classLevel) || 0;
+        teacherLevelActualHours.get(teacherId)?.set(classLevel, currentHours + 1);
+        placed = true;
+        task.isPlaced = true;
+        break;
       }
     }
   }

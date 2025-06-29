@@ -1,14 +1,58 @@
-import { Subject, TimeConstraint } from '../types/constraints';
+import { TimeConstraint } from '../types/constraints';
 
 /**
  * Sabit kısıtlamalar - Sistem tarafından otomatik uygulanır
  * Bu kısıtlamalar kullanıcı tarafından değiştirilemez
  */
-
-// DAYS ve PERIODS değişkenlerini import etmek yerine burada tanımlıyoruz
-// Bu dosya bağımsız olarak çalışabilsin diye
-const DAYS = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma'];
-const PERIODS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+export const FIXED_CONSTRAINTS: TimeConstraint[] = [
+  // İlkokul Kulüp Dersi - Perşembe 9-10. ders saatleri
+  {
+    id: 'fixed-ilkokul-kulup-1',
+    entityType: 'subject',
+    entityId: 'kulup-ilkokul',
+    day: 'Perşembe',
+    period: '9',
+    constraintType: 'preferred',
+    reason: 'İlkokul Kulüp Dersi - Sabit Zaman',
+    createdAt: new Date(),
+    updatedAt: new Date()
+  },
+  {
+    id: 'fixed-ilkokul-kulup-2',
+    entityType: 'subject',
+    entityId: 'kulup-ilkokul',
+    day: 'Perşembe',
+    period: '10',
+    constraintType: 'preferred',
+    reason: 'İlkokul Kulüp Dersi - Sabit Zaman',
+    createdAt: new Date(),
+    updatedAt: new Date()
+  },
+  
+  // Ortaokul Kulüp Dersi - Perşembe 7-8. ders saatleri
+  {
+    id: 'fixed-ortaokul-kulup-1',
+    entityType: 'subject',
+    entityId: 'kulup-ortaokul',
+    day: 'Perşembe',
+    period: '7',
+    constraintType: 'preferred',
+    reason: 'Ortaokul Kulüp Dersi - Sabit Zaman',
+    createdAt: new Date(),
+    updatedAt: new Date()
+  },
+  {
+    id: 'fixed-ortaokul-kulup-2',
+    entityType: 'subject',
+    entityId: 'kulup-ortaokul',
+    day: 'Perşembe',
+    period: '8',
+    constraintType: 'preferred',
+    reason: 'Ortaokul Kulüp Dersi - Sabit Zaman',
+    createdAt: new Date(),
+    updatedAt: new Date()
+  }
+];
 
 /**
  * Kulüp derslerini tespit eder ve sabit kısıtlamaları uygular
@@ -33,8 +77,6 @@ export function applyFixedClubConstraints(
     s.name.toUpperCase().includes('KULÜP') && 
     (s.level === 'Ortaokul' || (s.levels && s.levels.includes('Ortaokul')))
   );
-  
-  console.log(`🔍 Kulüp dersleri tespit edildi: İlkokul (${ilkokulKulupDersleri.length}), Ortaokul (${ortaokulKulupDersleri.length})`);
   
   // İlkokul kulüp dersleri için kısıtlamalar
   ilkokulKulupDersleri.forEach(subject => {
@@ -188,3 +230,8 @@ export function applyFixedClubConstraints(
   
   return updatedConstraints;
 }
+
+// DAYS ve PERIODS değişkenlerini import etmek yerine burada tanımlıyoruz
+// Bu dosya bağımsız olarak çalışabilsin diye
+const DAYS = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma'];
+const PERIODS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
