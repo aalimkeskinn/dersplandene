@@ -8,11 +8,11 @@ function getEntityLevel(entity: Teacher | Class): 'Anaokulu' | 'İlkokul' | 'Ort
 }
 
 /**
- * "Öncelikli Kısıtlı Görev" Algoritması (v44 - Kulüp Dersleri ve Sınıf Saati Kontrolü)
- * 1. "KULÜP" derslerini sabit zaman dilimlerinde 2 saatlik bloklar halinde yerleştirir
- * 2. "ADE" gibi özel dersleri tespit eder ve kısıtlamalarına göre yerleştirir
- * 3. Yemek saatlerine ders atanmasını engeller
- * 4. Öğretmenlerin maksimum ders saatini kontrol eder
+ * "Öncelikli Kısıtlı Görev" Algoritması (v45 - Sınıf Öğretmeni Önceliği)
+ * 1. Sınıf öğretmenlerinin derslerini öncelikli olarak yerleştirir (İlkokul ve Anaokulu için)
+ * 2. "KULÜP" derslerini sabit zaman dilimlerinde 2 saatlik bloklar halinde yerleştirir
+ * 3. "ADE" gibi özel dersleri tespit eder ve kısıtlamalarına göre yerleştirir
+ * 4. Yemek saatlerine ders atanmasını engeller
  * 5. Bir öğretmenin aynı sınıfa günde en fazla 2 saat ders vermesini sağlar
  * 6. Her sınıfın 45 saatlik ders ile doldurulmasını hedefler
  * 7. Ardından kalan normal dersleri, boş kalan slotlara en verimli şekilde dağıtır
@@ -27,7 +27,7 @@ export function generateSystematicSchedule(
 ): EnhancedGenerationResult {
   
   const startTime = Date.now();
-  console.log('🚀 Program oluşturma başlatıldı (v44 - Kulüp Dersleri ve Sınıf Saati Kontrolü)...');
+  console.log('🚀 Program oluşturma başlatıldı (v45 - Sınıf Öğretmeni Önceliği)...');
 
   // --- AŞAMA 1: VERİ MATRİSLERİNİ VE GÖREVLERİ HAZIRLA ---
   const classScheduleGrids: { [classId: string]: Schedule['schedule'] } = {};
@@ -115,6 +115,7 @@ export function generateSystematicSchedule(
     isSpecial: boolean;
     isKulupDersi?: boolean;
     isClassTeacherTask?: boolean; // YENİ: Sınıf öğretmeni görevi mi?
+    isMainSubject?: boolean; // YENİ: Temel ders mi? (Türkçe, Matematik)
     fixedSlots?: {day: string, period: string}[];
   };
   
@@ -131,6 +132,11 @@ export function generateSystematicSchedule(
     
     // Sınıf öğretmeni görevi mi kontrol et
     const isClassTeacherTask = classItem.classTeacherId === mapping.teacherId;
+    
+    // Temel ders mi kontrol et (Türkçe, Matematik)
+    const isMainSubject = subject.name.includes('Türkçe') || 
+                          subject.name.includes('Matematik') || 
+                          subject.name.includes('Hayat Bilgisi');
     
     // KULÜP DERSLERİ İÇİN ÖZEL KONTROL
     const isKulupDersi = subject.name.toUpperCase().includes('KULÜP');
@@ -151,6 +157,7 @@ export function generateSystematicSchedule(
           isSpecial: true,
           isKulupDersi: true,
           isClassTeacherTask,
+          isMainSubject,
           fixedSlots: [
             { day: 'Perşembe', period: '9' },
             { day: 'Perşembe', period: '10' }
@@ -168,6 +175,7 @@ export function generateSystematicSchedule(
           isSpecial: true,
           isKulupDersi: true,
           isClassTeacherTask,
+          isMainSubject,
           fixedSlots: [
             { day: 'Perşembe', period: '7' },
             { day: 'Perşembe', period: '8' }
@@ -185,7 +193,8 @@ export function generateSystematicSchedule(
           classLevel, 
           isPlaced: false,
           isSpecial: true,
-          isClassTeacherTask
+          isClassTeacherTask,
+          isMainSubject
         });
       }
     }
@@ -201,7 +210,8 @@ export function generateSystematicSchedule(
             classLevel, 
             isPlaced: false,
             isSpecial: false,
-            isClassTeacherTask: true
+            isClassTeacherTask: true,
+            isMainSubject
           });
           hoursLeft -= block;
         });
@@ -214,7 +224,8 @@ export function generateSystematicSchedule(
           classLevel, 
           isPlaced: false,
           isSpecial: false,
-          isClassTeacherTask: true
+          isClassTeacherTask: true,
+          isMainSubject
         });
       }
     }
@@ -230,7 +241,8 @@ export function generateSystematicSchedule(
             classLevel, 
             isPlaced: false,
             isSpecial: false,
-            isClassTeacherTask
+            isClassTeacherTask,
+            isMainSubject
           });
           hoursLeft -= block;
         });
@@ -243,7 +255,8 @@ export function generateSystematicSchedule(
           classLevel, 
           isPlaced: false,
           isSpecial: false,
-          isClassTeacherTask
+          isClassTeacherTask,
+          isMainSubject
         });
       }
     }
@@ -352,6 +365,13 @@ export function generateSystematicSchedule(
                           !classAvailability.get(classId)?.has(slotKey) && 
                           !isTeacherUnavailable;
       
+      // YENİ: Öğretmenin bu sınıfa bu gün için ders saati limitini kontrol et
+      const teacherDailyHoursForClass = teacherClassDailyHours.get(teacherId)?.get(slot.day)?.get(classId) || 0;
+      if (teacherDailyHoursForClass >= 2) {
+        // Bu öğretmen bu sınıfa bu gün için maksimum ders saatine ulaşmış
+        continue;
+      }
+      
       if (isAvailable) {
         classScheduleGrids[classId][slot.day][slot.period] = { 
           subjectId, 
@@ -384,21 +404,28 @@ export function generateSystematicSchedule(
   // --- AŞAMA 3.5: SINIF ÖĞRETMENİ GÖREVLERİNİ YERLEŞTİR ---
   console.log(`--- 3. Aşama: Sınıf Öğretmeni Görevleri (${classTeacherTasks.length} adet) Yerleştiriliyor... ---`);
   
-  // Sınıf öğretmeni görevlerini yerleştir
-  classTeacherTasks.sort((a, b) => b.blockLength - a.blockLength);
+  // Önce temel dersleri (Türkçe, Matematik) yerleştir
+  classTeacherTasks.sort((a, b) => {
+    // Önce temel dersler
+    if (a.isMainSubject && !b.isMainSubject) return -1;
+    if (!a.isMainSubject && b.isMainSubject) return 1;
+    
+    // Sonra blok uzunluğuna göre
+    return b.blockLength - a.blockLength;
+  });
   
+  // Sınıf öğretmeni görevlerini yerleştir
   for (const task of classTeacherTasks) {
-    const { mapping, blockLength, classLevel } = task;
+    const { mapping, blockLength, classLevel, isMainSubject } = task;
     const { teacherId, classId, subjectId } = mapping;
     
     const teacher = allTeachers.find(t => t.id === teacherId)!;
     const classItem = allClasses.find(c => c.id === classId)!;
     const subject = allSubjects.find(s => s.id === subjectId)!;
     
-    console.log(`🔍 Sınıf öğretmeni görevi: ${teacher.name} → ${classItem.name} → ${subject.name} (${blockLength} saat)`);
+    console.log(`🔍 Sınıf öğretmeni görevi: ${teacher.name} → ${classItem.name} → ${subject.name} (${blockLength} saat)${isMainSubject ? ' [Temel Ders]' : ''}`);
     
     // Temel dersleri (Türkçe, Matematik) sabah saatlerine yerleştirmeye çalış
-    const isMainSubject = subject.name.includes('Türkçe') || subject.name.includes('Matematik');
     const preferredPeriods = isMainSubject ? ['1', '2', '3', '4'] : PERIODS;
     
     let placed = false;
@@ -490,7 +517,7 @@ export function generateSystematicSchedule(
           teacherLevelActualHours.get(teacherId)?.set(classLevel, (teacherLevelActualHours.get(teacherId)?.get(classLevel) || 0) + blockLength);
           placed = true;
           task.isPlaced = true;
-          console.log(`✅ Sınıf öğretmeni dersi yerleştirildi: ${teacher.name} → ${classItem.name} → ${subject.name} (${day}, ${blockLength} saat)`);
+          console.log(`✅ Sınıf öğretmeni dersi yerleştirildi: ${teacher.name} → ${classItem.name} → ${subject.name} (${day}, ${blockLength} saat)${isMainSubject ? ' [Temel Ders]' : ''}`);
           break;
         }
       }
@@ -512,7 +539,8 @@ export function generateSystematicSchedule(
         classLevel, 
         isPlaced: false,
         isSpecial: false,
-        isClassTeacherTask: true
+        isClassTeacherTask: true,
+        isMainSubject
       });
       
       // İkinci parça
@@ -524,12 +552,20 @@ export function generateSystematicSchedule(
           classLevel, 
           isPlaced: false,
           isSpecial: false,
-          isClassTeacherTask: true
+          isClassTeacherTask: true,
+          isMainSubject
         });
       }
       
       // Yeniden sırala
-      classTeacherTasks.sort((a, b) => b.blockLength - a.blockLength);
+      classTeacherTasks.sort((a, b) => {
+        // Önce temel dersler
+        if (a.isMainSubject && !b.isMainSubject) return -1;
+        if (!a.isMainSubject && b.isMainSubject) return 1;
+        
+        // Sonra blok uzunluğuna göre
+        return b.blockLength - a.blockLength;
+      });
     }
   }
 
@@ -684,7 +720,9 @@ export function generateSystematicSchedule(
         taskId: `${taskToAttempt.taskId}-split-1`, 
         classLevel, 
         isPlaced: false,
-        isSpecial: false
+        isSpecial: false,
+        isClassTeacherTask: taskToAttempt.isClassTeacherTask,
+        isMainSubject: taskToAttempt.isMainSubject
       });
       
       // İkinci parça
@@ -695,7 +733,9 @@ export function generateSystematicSchedule(
           taskId: `${taskToAttempt.taskId}-split-2`, 
           classLevel, 
           isPlaced: false,
-          isSpecial: false
+          isSpecial: false,
+          isClassTeacherTask: taskToAttempt.isClassTeacherTask,
+          isMainSubject: taskToAttempt.isMainSubject
         });
       }
       
@@ -763,24 +803,45 @@ export function generateSystematicSchedule(
   let placedLessons = 0;
   teacherLevelActualHours.forEach(levelMap => levelMap.forEach(hours => placedLessons += hours));
 
-  const finalUnassignedLessons: { [key: string]: any } = {};
-  if (placedLessons < totalLessonsToPlace) {
-    teacherLevelTargets.forEach((levelMap, teacherId) => {
-        levelMap.forEach((targetHours, level) => {
-            const actualHours = teacherLevelActualHours.get(teacherId)?.get(level) || 0;
-            if (actualHours < targetHours) {
-                const missing = targetHours - actualHours;
-                const teacherName = allTeachers.find(t => t.id === teacherId)?.name || '?';
-                const key = `${teacherName}-${level}`;
-                if (!finalUnassignedLessons[key]) { finalUnassignedLessons[key] = { teacherName, level, missingHours: 0 }; }
-                finalUnassignedLessons[key].missingHours += missing;
-            }
-        });
+  // Eksik kalan dersleri tespit et
+  const finalUnassignedLessons: { className: string; subjectName: string; teacherName: string; missingHours: number }[] = [];
+  
+  mappings.forEach(mapping => {
+    const { teacherId, classId, subjectId, weeklyHours } = mapping;
+    
+    // Bu mapping için yerleştirilen ders saati sayısını hesapla
+    let placedHoursForMapping = 0;
+    DAYS.forEach(day => {
+      PERIODS.forEach(period => {
+        const slot = classScheduleGrids[classId]?.[day]?.[period];
+        if (slot && slot.teacherId === teacherId && slot.subjectId === subjectId && !slot.isFixed) {
+          placedHoursForMapping++;
+        }
+      });
     });
-  }
+    
+    // Eksik ders saati varsa, listeye ekle
+    if (placedHoursForMapping < weeklyHours) {
+      const missingHours = weeklyHours - placedHoursForMapping;
+      const teacher = allTeachers.find(t => t.id === teacherId);
+      const classItem = allClasses.find(c => c.id === classId);
+      const subject = allSubjects.find(s => s.id === subjectId);
+      
+      if (teacher && classItem && subject) {
+        finalUnassignedLessons.push({
+          className: classItem.name,
+          subjectName: subject.name,
+          teacherName: teacher.name,
+          missingHours
+        });
+      }
+    }
+  });
 
   const warnings: string[] = [];
-  if (placedLessons < totalLessonsToPlace) { warnings.push("Tüm ders saatleri yerleştirilemedi. Kısıtlamalar ve yoğun programlar nedeniyle bazı dersler boşta kalmış olabilir."); }
+  if (placedLessons < totalLessonsToPlace) { 
+    warnings.push("Tüm ders saatleri yerleştirilemedi. Kısıtlamalar ve yoğun programlar nedeniyle bazı dersler boşta kalmış olabilir."); 
+  }
   
   // YENİ: Sınıfların 45 saatlik ders limiti kontrolü
   selectedClassIds.forEach(classId => {
@@ -799,12 +860,23 @@ export function generateSystematicSchedule(
     }
   });
   
+  // YENİ: Sınıf öğretmeni görevlerinin yerleştirilme durumunu kontrol et
+  const unplacedClassTeacherTasks = classTeacherTasks.filter(task => !task.isPlaced);
+  if (unplacedClassTeacherTasks.length > 0) {
+    const unplacedClassTeacherTasksCount = unplacedClassTeacherTasks.length;
+    warnings.push(`${unplacedClassTeacherTasksCount} sınıf öğretmeni görevi yerleştirilemedi. Kısıtlamalar ve çakışmalar nedeniyle bazı dersler boşta kalmış olabilir.`);
+  }
+  
   console.log(`✅ Program oluşturma tamamlandı. Süre: ${(Date.now() - startTime) / 1000} saniye. Sonuç: ${placedLessons} / ${totalLessonsToPlace}`);
   
   return {
     success: true,
     schedules: finalSchedules,
-    statistics: { totalLessonsToPlace, placedLessons, unassignedLessons: Object.values(finalUnassignedLessons) },
+    statistics: { 
+      totalLessonsToPlace, 
+      placedLessons, 
+      unassignedLessons: finalUnassignedLessons 
+    },
     warnings,
     errors: [],
   };

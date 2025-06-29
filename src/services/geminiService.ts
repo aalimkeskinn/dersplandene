@@ -462,9 +462,6 @@ Eğer tüm dersleri yerleştiremezsen, eksik kalan dersler için şu bilgileri v
         }
       });
       
-      // Toplam ders saati
-      const totalLessonsToPlace = mappings.reduce((sum, m) => sum + m.weeklyHours, 0);
-      
       // Sınıfların 45 saatlik ders limiti kontrolü
       const classWeeklyHours = new Map<string, number>();
       const classNames = new Map<string, string>();
@@ -532,7 +529,8 @@ Eğer tüm dersleri yerleştiremezsen, eksik kalan dersler için şu bilgileri v
         'Kulüp dersleri 2 saatlik bloklar halinde yerleştirildi',
         'Yemek saatlerine ders atanmadı',
         'Bir öğretmen, bir sınıfa günde en fazla 2 saat ders verecek şekilde planlandı',
-        'Her sınıf için 45 saatlik ders hedeflendi'
+        'Her sınıf için 45 saatlik ders hedeflendi',
+        'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirildi'
       ];
       
       // Eksik atamalar için öneriler
@@ -542,6 +540,9 @@ Eğer tüm dersleri yerleştiremezsen, eksik kalan dersler için şu bilgileri v
           suggestions.push(`- ${lesson.className} sınıfı için ${lesson.subjectName} dersinin ${lesson.missingHours} saati yerleştirilemedi. ${lesson.teacherName} öğretmeninin programı kontrol edilmeli.`);
         });
       }
+      
+      // Toplam ders saati
+      const totalLessonsToPlace = mappings.reduce((sum, m) => sum + m.weeklyHours, 0);
       
       return {
         success: true,
@@ -586,6 +587,7 @@ Lütfen şu konularda öneriler ver:
 5. Sınıf verimliliği
 6. Bir öğretmenin aynı sınıfa günde en fazla 2 saat ders vermesi kuralına uyum
 7. Her sınıfın 45 saatlik ders ile doldurulması hedefine uyum
+8. Sınıf öğretmenlerinin derslerinin önceliklendirilmesi
 
 Önerilerini madde madde listele.
 `;
@@ -620,6 +622,8 @@ KURALLAR:
 2. Her sınıf 45 saatlik ders ile doldurulmalıdır
 3. Kulüp dersleri sabit zaman dilimlerinde verilmelidir (İlkokul: Perşembe 9-10, Ortaokul: Perşembe 7-8)
 4. Yemek saatlerine ders atanamaz (İlkokul/Anaokulu: 5. ders, Ortaokul: 6. ders)
+5. Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirilmelidir (İlkokul ve Anaokulu için)
+6. Temel dersler (Türkçe, Matematik) sabah saatlerinde olmalıdır
 
 Lütfen bu çakışmaları çözmek için spesifik öneriler ver ve yeni program düzenlemesi öner.
 `;

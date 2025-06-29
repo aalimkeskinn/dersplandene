@@ -57,6 +57,11 @@ export function createSubjectTeacherMappings(
           const weeklyHours = subject.weeklyHours;
           const distribution = subject.distributionPattern ? parseDistributionPattern(subject.distributionPattern) : undefined;
 
+          // Temel ders mi kontrol et (Türkçe, Matematik, Hayat Bilgisi)
+          const isMainSubject = subject.name.includes('Türkçe') || 
+                                subject.name.includes('Matematik') || 
+                                subject.name.includes('Hayat Bilgisi');
+
           const task: SubjectTeacherMapping = {
             id: `${classId}-${subjectId}`, 
             classId, 
@@ -65,7 +70,7 @@ export function createSubjectTeacherMappings(
             weeklyHours,
             assignedHours: 0, 
             distribution, 
-            priority: isClassTeacher ? 'high' : 'medium', // Sınıf öğretmenlerine yüksek öncelik
+            priority: isClassTeacher ? 'high' : isMainSubject ? 'high' : 'medium', // Sınıf öğretmenlerine ve temel derslere yüksek öncelik
           };
 
           if (distribution && distribution.reduce((a, b) => a + b, 0) !== weeklyHours) {

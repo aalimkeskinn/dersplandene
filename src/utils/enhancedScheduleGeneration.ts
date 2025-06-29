@@ -277,7 +277,8 @@ async function generateHybridSchedule(
           'Eksik atamalar tamamlandı',
           'Çakışmalar önlendi',
           'Bir öğretmen, bir sınıfa günde en fazla 2 saat ders verecek şekilde planlandı',
-          'Her sınıf için 45 saatlik ders hedeflendi'
+          'Her sınıf için 45 saatlik ders hedeflendi',
+          'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirildi'
         ]
       }
     };
@@ -426,7 +427,8 @@ async function generateClassicSchedule(
         'AI kullanılmadı veya başarısız oldu',
         'Temel optimizasyonlar uygulandı',
         'Bir öğretmen, bir sınıfa günde en fazla 2 saat ders verecek şekilde planlandı',
-        'Her sınıf için 45 saatlik ders hedeflendi'
+        'Her sınıf için 45 saatlik ders hedeflendi',
+        'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirildi'
       ]
     }
   };
@@ -466,7 +468,8 @@ export async function analyzeScheduleWithAI(
         'Öğretmen yük dağılımı optimize edilebilir',
         'Sınıf geçişleri minimize edilebilir',
         'Bir öğretmenin aynı sınıfa günde en fazla 2 saat ders vermesi sağlanabilir',
-        'Her sınıfın 45 saatlik ders ile doldurulması hedeflenebilir'
+        'Her sınıfın 45 saatlik ders ile doldurulması hedeflenebilir',
+        'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirilebilir'
       ]
     };
   } catch (error) {
@@ -501,7 +504,8 @@ export async function resolveConflictsWithAI(
         'Çakışmalar AI tarafından çözüldü',
         'Yeni program önerisi hazırlandı',
         'Bir öğretmenin aynı sınıfa günde en fazla 2 saat ders vermesi sağlandı',
-        'Her sınıfın 45 saatlik ders ile doldurulması hedeflendi'
+        'Her sınıfın 45 saatlik ders ile doldurulması hedeflendi',
+        'Sınıf öğretmenlerinin dersleri öncelikli olarak yerleştirildi'
       ]
     };
   } catch (error) {
