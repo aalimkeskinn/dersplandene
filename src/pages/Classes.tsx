@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Edit, Trash2, Building, Eye, Calendar, Users, ChevronDown, ChevronUp, Clock } from 'lucide-react';
+import { Plus, Edit, Trash2, Building, Eye, Calendar, Users, ChevronDown, ChevronUp, Clock, BookOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Class, EDUCATION_LEVELS, Schedule, Teacher, Subject, TeacherAssignment } from '../types';
 import { useFirestore } from '../hooks/useFirestore';
@@ -72,14 +72,15 @@ const Classes = () => {
       }, 0);
   };
 
-  // YENİ: Sınıf öğretmeninin derslerini ayrı ayrı göster
-  const getClassTeacherSubjects = (classTeacherId: string, classAssignments: TeacherAssignment[]): { name: string, hours: number }[] => {
+  // Sınıf öğretmeninin derslerini ayrı ayrı göster
+  const getClassTeacherSubjects = (classTeacherId: string, classAssignments: TeacherAssignment[]): { id: string, name: string, hours: number }[] => {
     const assignment = classAssignments.find(a => a.teacherId === classTeacherId);
     if (!assignment) return [];
     
     return assignment.subjectIds.map(subjectId => {
       const subject = subjects.find(s => s.id === subjectId);
       return {
+        id: subjectId,
         name: subject?.name || 'Bilinmeyen Ders',
         hours: subject?.weeklyHours || 0
       };
@@ -177,7 +178,7 @@ const Classes = () => {
     });
   };
 
-  // *** DÜZELTME: Öğretmen listesi artık sınıfın seviyesine göre filtreleniyor. ***
+  // Öğretmen listesi artık sınıfın seviyesine göre filtreleniyor
   const getFilteredTeachersForModal = () => {
     if (formData.levels.length === 0) return [];
     return teachers
@@ -205,10 +206,13 @@ const Classes = () => {
             const assignedTeachers = teachers.filter(t => classItem.assignments?.some(a => a.teacherId === t.id));
             const isExpanded = expandedClass === classItem.id;
             
-            // YENİ: Sınıf öğretmeninin derslerini al
+            // Sınıf öğretmeninin derslerini al
             const classTeacherSubjects = classTeacher 
               ? getClassTeacherSubjects(classTeacher.id, classItem.assignments || [])
               : [];
+              
+            // Sınıf öğretmeninin toplam ders saati
+            const classTeacherTotalHours = classTeacherSubjects.reduce((sum, subject) => sum + subject.hours, 0);
 
             return (
               <div key={classItem.id} className="mobile-card mobile-spacing hover:shadow-md transition-shadow">
@@ -218,23 +222,34 @@ const Classes = () => {
                 </div>
                 
                 {classTeacher && (
-                  <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                  <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
                     <div className="flex items-start">
                       <Users className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0 mt-1" />
-                      <div>
-                        <p className="text-sm font-medium text-blue-800">
-                          <span className="font-bold">Sınıf Öğrt:</span> {classTeacher.name}
-                        </p>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium text-blue-800">
+                            <span className="font-bold">Sınıf Öğrt:</span> {classTeacher.name}
+                          </p>
+                          <span className="text-xs bg-blue-200 text-blue-800 px-2 py-1 rounded-full">
+                            Toplam: {classTeacherTotalHours} saat
+                          </span>
+                        </div>
                         
-                        {/* YENİ: Sınıf öğretmeninin derslerini göster */}
+                        {/* Sınıf öğretmeninin derslerini göster */}
                         {classTeacherSubjects.length > 0 && (
-                          <div className="mt-2 space-y-1">
-                            <p className="text-xs font-medium text-blue-700">Verdiği dersler:</p>
-                            <div className="grid grid-cols-2 gap-2">
-                              {classTeacherSubjects.map((subject, idx) => (
-                                <div key={idx} className="flex items-center justify-between bg-blue-100 rounded px-2 py-1">
-                                  <span className="text-xs font-medium text-blue-800">{subject.name}</span>
-                                  <span className="text-xs bg-blue-200 text-blue-900 px-1.5 rounded">{subject.hours} sa</span>
+                          <div className="mt-3">
+                            <div className="flex items-center mb-2">
+                              <BookOpen className="w-4 h-4 text-blue-600 mr-1" />
+                              <p className="text-xs font-medium text-blue-700">Verdiği dersler:</p>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {classTeacherSubjects.map((subject) => (
+                                <div key={subject.id} className="flex items-center justify-between bg-blue-100 rounded px-3 py-1.5">
+                                  <span className="text-sm font-medium text-blue-800">{subject.name}</span>
+                                  <span className="text-xs bg-blue-200 text-blue-900 px-2 py-0.5 rounded-full flex items-center">
+                                    <Clock className="w-3 h-3 mr-1" />
+                                    {subject.hours} saat
+                                  </span>
                                 </div>
                               ))}
                             </div>
@@ -263,26 +278,42 @@ const Classes = () => {
                         const actual = getTeacherHoursInClass(teacher.id, classItem.id); 
                         const isMismatch = target !== actual;
                         
-                        // YENİ: Öğretmenin bu sınıfta verdiği dersleri al
+                        // Öğretmenin bu sınıfta verdiği dersleri al
                         const teacherSubjects = classItem.assignments
                           ?.find(a => a.teacherId === teacher.id)?.subjectIds
-                          .map(sid => subjects.find(s => s.id === sid))
-                          .filter(Boolean)
-                          .map(s => s?.name) || [];
+                          .map(sid => {
+                            const subject = subjects.find(s => s.id === sid);
+                            return subject ? {
+                              name: subject.name,
+                              hours: subject.weeklyHours
+                            } : null;
+                          })
+                          .filter(Boolean) || [];
+                        
+                        // Sınıf öğretmeni mi?
+                        const isClassTeacher = teacher.id === classItem.classTeacherId;
                         
                         return (
-                          <div key={teacher.id} className="flex flex-col space-y-1">
+                          <div key={teacher.id} className={`flex flex-col space-y-1 p-2 rounded-lg ${isClassTeacher ? 'bg-blue-50 border border-blue-200' : ''}`}>
                             <div className="flex justify-between items-center text-sm">
-                              <span className="text-gray-700 font-medium">{teacher.name}</span>
+                              <span className={`${isClassTeacher ? 'text-blue-700 font-semibold' : 'text-gray-700'}`}>
+                                {teacher.name}
+                                {isClassTeacher && <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">Sınıf Öğrt.</span>}
+                              </span>
                               <span className={`font-semibold px-2 py-1 rounded-full text-xs flex items-center gap-1 ${isMismatch ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
                                 <Clock size={12}/>{actual} / {target}
                               </span>
                             </div>
                             
-                            {/* YENİ: Öğretmenin verdiği dersleri göster */}
+                            {/* Öğretmenin verdiği dersleri göster */}
                             {teacherSubjects.length > 0 && (
-                              <div className="pl-4 text-xs text-gray-600">
-                                Dersler: {teacherSubjects.join(', ')}
+                              <div className="pl-4 grid grid-cols-1 sm:grid-cols-2 gap-1 mt-1">
+                                {teacherSubjects.map((subject, idx) => (
+                                  <div key={idx} className="flex items-center justify-between text-xs bg-gray-100 rounded px-2 py-1">
+                                    <span className="text-gray-700">{subject.name}</span>
+                                    <span className="text-gray-600 bg-gray-200 px-1.5 rounded">{subject.hours} sa</span>
+                                  </div>
+                                ))}
                               </div>
                             )}
                           </div>
@@ -315,7 +346,7 @@ const Classes = () => {
             <div className="mt-4">
               <Select label="Sınıf Öğretmeni" value={formData.classTeacherId} onChange={v => setFormData(p=>({...p, classTeacherId: v}))} options={[{value: '', label: 'Sınıf Öğretmeni Yok'}, ...getFilteredTeachersForModal().map(t=>({value: t.id, label: t.name}))]} />
               
-              {/* YENİ: Sınıf öğretmeni seçildiğinde bilgilendirme mesajı */}
+              {/* Sınıf öğretmeni seçildiğinde bilgilendirme mesajı */}
               {formData.classTeacherId && (
                 <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <p className="text-sm text-blue-700">
@@ -331,7 +362,7 @@ const Classes = () => {
                       const teacherSubjects = subjects.filter(s => (s.levels || [s.level]).some(l=>formData.levels.includes(l)) && teacher.subjectIds?.includes(s.id));
                       if (teacherSubjects.length === 0) return null;
                       
-                      // YENİ: Sınıf öğretmeni vurgusu
+                      // Sınıf öğretmeni vurgusu
                       const isClassTeacher = teacher.id === formData.classTeacherId;
                       
                       return (
