@@ -47,7 +47,7 @@ class GeminiScheduleService {
 
     } catch (error) {
       console.error('❌ Gemini AI hatası:', error);
-      throw new Error('AI destekli program oluşturma başarısız oldu');
+      throw new Error('AI yanıtı işlenemedi');
     }
   }
 
@@ -188,8 +188,9 @@ ${formattedConstraints.length > 0 ? formattedConstraints.map(c =>
 5. **Tercih Edilen Saatler**: "preferred" kısıtlamalarına öncelik verilmesi
 
 ### ÖZEL DURUMLAR:
+- **Kulüp Dersleri (İlkokul)**: Perşembe günü 9-10. saatlerde 2 saatlik blok olarak verilmelidir
+- **Kulüp Dersleri (Ortaokul)**: Perşembe günü 7-8. saatlerde 2 saatlik blok olarak verilmelidir
 - **ADE Dersleri**: Salı günü 4-5 ve 7-8. saatlerde (Ortaokul)
-- **Kulüp Dersleri**: Perşembe günü son saatlerde
 - **Sınıf Öğretmeni**: Kendi sınıfında mümkün olduğunca çok ders vermeli
 - **Ana Dersler**: Türkçe, Matematik gibi temel dersler sabah saatlerinde tercih edilmeli
 

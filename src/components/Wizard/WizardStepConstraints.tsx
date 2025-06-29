@@ -32,7 +32,7 @@ const RULE_TEMPLATES = [
     label: 'Kulüp Dersi (Ortaokul)',
     level: 'Ortaokul',
     subjectKeyword: 'KULÜP',
-    rules: [{ day: 'Perşembe', periods: ['6', '7'] }]
+    rules: [{ day: 'Perşembe', periods: ['7', '8'] }]
   },
 ];
 
@@ -208,8 +208,8 @@ const WizardStepConstraints: React.FC<WizardStepConstraintsProps> = ({
               Aşağıdaki kısıtlamalar sistem tarafından otomatik olarak uygulanır ve değiştirilemez:
             </p>
             <ul className="list-disc list-inside space-y-2 text-sm text-yellow-700">
-              <li><strong>İlkokul Kulüp Dersleri:</strong> Perşembe günü 9-10. ders saatlerinde sabit olarak yapılır.</li>
-              <li><strong>Ortaokul Kulüp Dersleri:</strong> Perşembe günü 7-8. ders saatlerinde sabit olarak yapılır.</li>
+              <li><strong>İlkokul Kulüp Dersleri:</strong> Perşembe günü 9-10. ders saatlerinde sabit olarak yapılır (2 saatlik blok).</li>
+              <li><strong>Ortaokul Kulüp Dersleri:</strong> Perşembe günü 7-8. ders saatlerinde sabit olarak yapılır (2 saatlik blok).</li>
               <li><strong>ADE Dersleri (Ortaokul):</strong> Salı günü 4-5 ve 7-8. ders saatlerinde yapılır.</li>
             </ul>
           </div>

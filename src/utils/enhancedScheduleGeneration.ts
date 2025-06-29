@@ -28,13 +28,17 @@ export async function generateAIEnhancedSchedule(
     const enhancedConstraints = applyFixedClubConstraints(allSubjects, timeConstraints);
     console.log(`✅ Sabit kısıtlamalar uygulandı: ${enhancedConstraints.length} kısıtlama (önceki: ${timeConstraints.length})`);
     
+    // KULÜP DERSLERİ İÇİN BLOK DERS AYARLAMASI
+    const enhancedMappings = prepareClubClassesAsBlocks(mappings, allSubjects, allClasses);
+    console.log(`✅ Kulüp dersleri blok olarak ayarlandı: ${mappings.length} mapping`);
+    
     if (useAI) {
       // Gemini AI ile program oluştur
       console.log('🤖 Gemini AI devreye giriyor...');
       
       try {
         const aiResult = await geminiScheduleService.generateOptimalSchedule(
-          mappings,
+          enhancedMappings,
           allTeachers,
           allClasses,
           allSubjects,
@@ -49,23 +53,23 @@ export async function generateAIEnhancedSchedule(
           // Eksik ders ataması kontrolü
           if (aiResult.statistics.unassignedLessons.length > 0) {
             console.log('⚠️ AI bazı dersleri atayamadı, hibrit yaklaşım kullanılıyor...');
-            return await generateHybridSchedule(mappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules, aiResult);
+            return await generateHybridSchedule(enhancedMappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules, aiResult);
           }
           
           return aiResult;
         } else {
           console.log('⚠️ AI kısmi sonuç verdi, hibrit yaklaşım kullanılıyor...');
-          return await generateHybridSchedule(mappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules, aiResult);
+          return await generateHybridSchedule(enhancedMappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules, aiResult);
         }
       } catch (aiError) {
         console.error('❌ AI hatası:', aiError);
         console.log('🔄 Klasik algoritma ile devam ediliyor...');
-        return await generateClassicSchedule(mappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules);
+        return await generateClassicSchedule(enhancedMappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules);
       }
     } else {
       // Klasik algoritma ile devam et
       console.log('🔧 Klasik algoritma kullanılıyor...');
-      return await generateClassicSchedule(mappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules);
+      return await generateClassicSchedule(enhancedMappings, allTeachers, allClasses, allSubjects, enhancedConstraints, globalRules);
     }
   } catch (error) {
     console.error('❌ Genel hata, fallback algoritma devreye giriyor:', error);
@@ -73,6 +77,37 @@ export async function generateAIEnhancedSchedule(
     // Herhangi bir hata durumunda klasik algoritma ile devam et
     return await generateClassicSchedule(mappings, allTeachers, allClasses, allSubjects, timeConstraints, globalRules);
   }
+}
+
+/**
+ * Kulüp derslerini 2 saatlik bloklar halinde hazırla
+ */
+function prepareClubClassesAsBlocks(
+  mappings: SubjectTeacherMapping[],
+  allSubjects: Subject[],
+  allClasses: Class[]
+): SubjectTeacherMapping[] {
+  // Mappingleri kopyala
+  const enhancedMappings = [...mappings];
+  
+  // Kulüp derslerini tespit et ve düzelt
+  mappings.forEach((mapping, index) => {
+    const subject = allSubjects.find(s => s.id === mapping.subjectId);
+    const classItem = allClasses.find(c => c.id === mapping.classId);
+    
+    if (subject && classItem && subject.name.toUpperCase().includes('KULÜP')) {
+      // Kulüp dersinin haftalık saatini 2 olarak ayarla
+      enhancedMappings[index] = {
+        ...mapping,
+        weeklyHours: 2,
+        distribution: [2] // 2 saatlik tek blok
+      };
+      
+      console.log(`✅ Kulüp dersi "${subject.name}" için ${classItem.name} sınıfında 2 saatlik blok ayarlandı`);
+    }
+  });
+  
+  return enhancedMappings;
 }
 
 /**
